@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "title": "JUC 知识库",
+  "chapters": [
+    "chapters/ch01.json",
+    "chapters/ch02.json"
+  ],
+  "cheatsheet": "cheatsheet.json"
+}

@@ -1,0 +1,1201 @@
+{
+  "id": "ch02",
+  "number": 2,
+  "title": "注意事项与陷阱",
+  "color": "coral",
+  "lessons": [
+    {
+      "id": "l-pitfalls",
+      "slug": "pitfalls",
+      "chapterId": "ch02",
+      "chapterNumber": 2,
+      "chapterTitle": "注意事项与陷阱",
+      "lessonIndexInChapter": 1,
+      "totalInChapter": 1,
+      "title": "生产环境注意事项",
+      "subtitle": "Executors 陷阱、拒绝策略、吞异常、优雅关闭与参数调优",
+      "durationMin": 14,
+      "level": "进阶",
+      "objectives": [
+        {
+          "id": "p1",
+          "text": "说出 Executors 两条 OOM 路径：无界队列 / 无限线程",
+          "completedAtStep": 1
+        },
+        {
+          "id": "p2",
+          "text": "为业务场景选择合适的拒绝策略",
+          "completedAtStep": 2
+        },
+        {
+          "id": "p3",
+          "text": "解释 submit 吞异常的原因与三种兜底",
+          "completedAtStep": 3
+        },
+        {
+          "id": "p4",
+          "text": "写出 shutdown → awaitTermination 两阶段关闭",
+          "completedAtStep": 4
+        },
+        {
+          "id": "p5",
+          "text": "掌握命名 / 隔离 / 监控 / 动态调参四件套",
+          "completedAtStep": 6
+        }
+      ],
+      "steps": [
+        {
+          "stepNumber": 1,
+          "shortLabel": "Executors 陷阱",
+          "badge": "PROBLEM",
+          "title": "为什么规约禁用 Executors 工厂方法",
+          "paragraphs": [
+            "`Executors.newFixedThreadPool(n)` 与 `newSingleThreadExecutor()` 用的是**无界** `LinkedBlockingQueue`（容量 Integer.MAX_VALUE）。任务生产快于消费时，队列无限堆积，最终 `OutOfMemoryError: Java heap space`。",
+            "`newCachedThreadPool()` 与 `newScheduledThreadPool()` 走另一条死路：`maximumPoolSize = Integer.MAX_VALUE`。突发流量下线程无限创建，每个线程默认吃 1MB 栈内存，最终 `OutOfMemoryError: unable to create native thread`。",
+            "阿里巴巴 Java 开发手册因此强制：**线程池不允许使用 Executors 创建，必须手动 `new ThreadPoolExecutor(...)`**，七个参数显式写出来，让使用者清楚队列边界与线程上限。"
+          ],
+          "callout": {
+            "kind": "warn",
+            "text": "无界队列还会让 `maximumPoolSize` 和拒绝策略全部失效 —— 队列永远不满，第三、四级决策永远走不到。"
+          },
+          "diffs": [
+            {
+              "kind": "add",
+              "text": "Fixed/Single → 无界队列 → 堆内存 OOM"
+            },
+            {
+              "kind": "add",
+              "text": "Cached/Scheduled → 无限线程 → 原生线程 OOM"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "Executors 工厂的真实参数",
+            "filePath": "java/util/concurrent/Executors.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/Executors.java",
+            "language": "java",
+            "code": "public static ExecutorService newFixedThreadPool(int nThreads) {\n    return new ThreadPoolExecutor(nThreads, nThreads,\n        0L, TimeUnit.MILLISECONDS,\n        new LinkedBlockingQueue<Runnable>()); // 无界!\n}\n\npublic static ExecutorService newCachedThreadPool() {\n    return new ThreadPoolExecutor(0, Integer.MAX_VALUE,\n        60L, TimeUnit.SECONDS,\n        new SynchronousQueue<Runnable>()); // 无限线程!\n}",
+            "caption": "工厂方法把最危险的两个默认值藏了起来。"
+          },
+          "kpis": [
+            {
+              "label": "Fixed 队列容量",
+              "value": "Integer.MAX_VALUE",
+              "status": "bad"
+            },
+            {
+              "label": "Cached 最大线程",
+              "value": "Integer.MAX_VALUE",
+              "status": "bad"
+            },
+            {
+              "label": "结局",
+              "value": "OOM",
+              "status": "bad"
+            }
+          ],
+          "legend": [
+            {
+              "color": "blue",
+              "label": "工厂方法"
+            },
+            {
+              "color": "orange",
+              "label": "无界队列"
+            },
+            {
+              "color": "violet",
+              "label": "无限线程"
+            },
+            {
+              "color": "rose",
+              "label": "OOM"
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "Executors 工厂的两条 OOM 路径",
+            "nodes": [
+              {
+                "id": "fixed",
+                "x": 170,
+                "y": 90,
+                "w": 250,
+                "h": 60,
+                "label": "newFixedThreadPool(n)",
+                "sublabel": "core = max = n",
+                "tone": "blue",
+                "icon": "box"
+              },
+              {
+                "id": "single",
+                "x": 170,
+                "y": 190,
+                "w": 250,
+                "h": 60,
+                "label": "newSingleThreadExecutor()",
+                "sublabel": "core = max = 1",
+                "tone": "blue",
+                "icon": "box"
+              },
+              {
+                "id": "cached",
+                "x": 170,
+                "y": 420,
+                "w": 250,
+                "h": 60,
+                "label": "newCachedThreadPool()",
+                "sublabel": "core = 0, max = Integer.MAX_VALUE",
+                "tone": "violet",
+                "icon": "flame"
+              },
+              {
+                "id": "threads",
+                "x": 605,
+                "y": 420,
+                "w": 250,
+                "h": 62,
+                "label": "线程数无限增长",
+                "sublabel": "SynchronousQueue 不存任务",
+                "tone": "violet",
+                "icon": "users",
+                "active": true
+              },
+              {
+                "id": "oom",
+                "x": 880,
+                "y": 250,
+                "w": 190,
+                "h": 72,
+                "label": "OutOfMemoryError",
+                "sublabel": "请求堆积 / 线程耗尽",
+                "tone": "rose",
+                "icon": "skull",
+                "active": true
+              }
+            ],
+            "zones": [
+              {
+                "id": "unbounded",
+                "x": 480,
+                "y": 60,
+                "w": 250,
+                "h": 130,
+                "label": "LinkedBlockingQueue",
+                "sublabel": "无界队列",
+                "tone": "orange",
+                "slots": {
+                  "total": 7,
+                  "filled": 6,
+                  "tone": "orange",
+                  "headLabel": "capacity = Integer.MAX_VALUE"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "from": "fixed",
+                "to": "unbounded",
+                "tone": "orange",
+                "packets": 1
+              },
+              {
+                "from": "single",
+                "to": "unbounded",
+                "via": [
+                  [
+                    440,
+                    190
+                  ],
+                  [
+                    440,
+                    150
+                  ]
+                ],
+                "tone": "orange",
+                "packets": 1
+              },
+              {
+                "from": "unbounded",
+                "to": "oom",
+                "label": "任务无限堆积",
+                "tone": "rose",
+                "packets": 2,
+                "status": "error"
+              },
+              {
+                "from": "cached",
+                "to": "threads",
+                "label": "每任务新建线程",
+                "tone": "violet",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "threads",
+                "to": "oom",
+                "label": "unable to create native thread",
+                "tone": "rose",
+                "packets": 1,
+                "status": "error"
+              }
+            ],
+            "callouts": [
+              {
+                "x": 480,
+                "y": 520,
+                "text": "规约：手动 new ThreadPoolExecutor，七个参数全部显式",
+                "tone": "green"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 2,
+          "shortLabel": "拒绝策略",
+          "badge": "SOLUTION",
+          "title": "四种拒绝策略：溢出时的行为契约",
+          "paragraphs": [
+            "**AbortPolicy**（默认）：抛 `RejectedExecutionException`。快速失败，调用方立刻感知，但必须有人捕获处理，否则异常冒泡影响主流程。",
+            "**CallerRunsPolicy**：谁提交谁执行。提交任务的线程（比如 Tomcat 的 IO 线程）被拉去跑任务，期间无法继续提交 —— 天然**反压**，让上游自动降速。代价是调用线程被占用，极端情况下拖慢入口。",
+            "**DiscardPolicy** 静默丢弃新任务；**DiscardOldestPolicy** 丢队头最老任务再重试提交。两者都不通知调用方，只适合「丢了也无所谓」的场景（如可丢弃的监控采样），**核心业务禁用**。",
+            "生产最佳实践往往是**自定义策略**：记录日志 + 打点告警 + 落库 / 进 MQ 延迟重试，把「拒绝」变成可观测、可补偿的事件。"
+          ],
+          "callout": {
+            "kind": "idea",
+            "text": "CallerRuns 的反压效果在实验台里可直接观察：饱和后提交速率会被调用者执行耗时自动拉低。"
+          },
+          "diffs": [
+            {
+              "kind": "add",
+              "text": "Abort：抛异常，快速失败"
+            },
+            {
+              "kind": "add",
+              "text": "CallerRuns：调用者执行，反压上游"
+            },
+            {
+              "kind": "add",
+              "text": "Discard / DiscardOldest：静默丢弃，慎用"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "CallerRunsPolicy 源码",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "public static class CallerRunsPolicy implements RejectedExecutionHandler {\n    public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {\n        if (!e.isShutdown()) {\n            r.run();   // 就在调用者线程里执行\n        }\n    }\n}",
+            "caption": "只有 4 行，却是最好用的内置反压机制。注意池已 shutdown 时任务会被静默丢弃。"
+          },
+          "kpis": [
+            {
+              "label": "默认策略",
+              "value": "AbortPolicy",
+              "status": "warn"
+            },
+            {
+              "label": "反压选择",
+              "value": "CallerRuns",
+              "status": "good"
+            },
+            {
+              "label": "静默丢弃",
+              "value": "Discard 系",
+              "status": "bad"
+            }
+          ],
+          "legend": [
+            {
+              "color": "rose",
+              "label": "Abort 抛异常"
+            },
+            {
+              "color": "blue",
+              "label": "CallerRuns 反压"
+            },
+            {
+              "color": "neutral",
+              "label": "Discard 静默"
+            },
+            {
+              "color": "orange",
+              "label": "DiscardOldest"
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "饱和之后的四个出口",
+            "nodes": [
+              {
+                "id": "saturated",
+                "x": 170,
+                "y": 290,
+                "w": 230,
+                "h": 72,
+                "label": "池饱和",
+                "sublabel": "wc = max 且队列已满",
+                "tone": "rose",
+                "icon": "alert",
+                "active": true
+              },
+              {
+                "id": "abort",
+                "x": 620,
+                "y": 80,
+                "w": 300,
+                "h": 62,
+                "label": "AbortPolicy（默认）",
+                "sublabel": "抛 RejectedExecutionException",
+                "tone": "rose",
+                "icon": "alert",
+                "badge": "DEFAULT"
+              },
+              {
+                "id": "caller",
+                "x": 620,
+                "y": 210,
+                "w": 300,
+                "h": 62,
+                "label": "CallerRunsPolicy",
+                "sublabel": "调用者线程自己执行 → 反压",
+                "tone": "blue",
+                "icon": "shield"
+              },
+              {
+                "id": "discard",
+                "x": 620,
+                "y": 340,
+                "w": 300,
+                "h": 62,
+                "label": "DiscardPolicy",
+                "sublabel": "静默丢弃，无任何通知",
+                "tone": "neutral",
+                "icon": "trash"
+              },
+              {
+                "id": "oldest",
+                "x": 620,
+                "y": 470,
+                "w": 300,
+                "h": 62,
+                "label": "DiscardOldestPolicy",
+                "sublabel": "丢队头任务，重试 execute",
+                "tone": "orange",
+                "icon": "recycle"
+              }
+            ],
+            "edges": [
+              {
+                "from": "saturated",
+                "to": "abort",
+                "via": [
+                  [
+                    400,
+                    80
+                  ]
+                ],
+                "tone": "rose",
+                "packets": 2,
+                "status": "error",
+                "label": "默认",
+                "labelAt": 0.75
+              },
+              {
+                "from": "saturated",
+                "to": "caller",
+                "via": [
+                  [
+                    400,
+                    210
+                  ]
+                ],
+                "tone": "blue",
+                "packets": 1
+              },
+              {
+                "from": "saturated",
+                "to": "discard",
+                "via": [
+                  [
+                    400,
+                    340
+                  ]
+                ],
+                "tone": "neutral",
+                "packets": 1,
+                "status": "dimmed"
+              },
+              {
+                "from": "saturated",
+                "to": "oldest",
+                "via": [
+                  [
+                    400,
+                    470
+                  ]
+                ],
+                "tone": "orange",
+                "packets": 1
+              }
+            ],
+            "callouts": [
+              {
+                "x": 60,
+                "y": 520,
+                "text": "生产建议：CallerRuns 反压，或自定义策略落库 + 告警",
+                "tone": "violet"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 3,
+          "shortLabel": "吞异常",
+          "badge": "PROBLEM",
+          "title": "submit() 会悄悄吞掉你的异常",
+          "paragraphs": [
+            "`submit(task)` 把任务包成 `FutureTask`。它的 `run()` 里 `catch (Throwable ex)` 后调用 `setException(ex)` —— 异常被**存进 Future 的 outcome 字段**，不打印、不抛出、没有任何日志。任务失败得像什么都没发生。",
+            "只有调用 `future.get()` 时，异常才会以 `ExecutionException` 的形式浮现。如果你 submit 之后从不 get（fire-and-forget 写法），异常就永远沉默。这是线程池排障的第一大坑。",
+            "三条兜底路线：① 需要结果就**必须 get()**；② 重写 `afterExecute(Runnable r, Throwable t)`，对 FutureTask 主动 get 提取异常；③ 用 `execute()` 提交 + 自定义 `ThreadFactory` 设置 `UncaughtExceptionHandler`。"
+          ],
+          "callout": {
+            "kind": "warn",
+            "text": "`execute()` 提交的 Runnable 抛异常会终止当前 Worker（池随后补线程），默认打印堆栈；`submit()` 则完全静默。两者行为差异巨大。"
+          },
+          "diffs": [
+            {
+              "kind": "add",
+              "text": "FutureTask.run() catch Throwable → setException"
+            },
+            {
+              "kind": "add",
+              "text": "异常仅在 future.get() 时以 ExecutionException 抛出"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "afterExecute 兜底模板",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "new ThreadPoolExecutor(...) {\n    @Override\n    protected void afterExecute(Runnable r, Throwable t) {\n        super.afterExecute(r, t);\n        if (t == null && r instanceof Future<?> f) {\n            try {\n                if (f.isDone()) f.get();\n            } catch (CancellationException ce) {\n                t = ce;\n            } catch (ExecutionException ee) {\n                t = ee.getCause();\n            } catch (InterruptedException ie) {\n                Thread.currentThread().interrupt();\n            }\n        }\n        if (t != null) log.error(\"task failed\", t);\n    }\n};",
+            "caption": "JDK 文档官方推荐的异常兜底写法：submit 的异常藏在 Future 里，要主动挖出来。"
+          },
+          "kpis": [
+            {
+              "label": "submit 异常",
+              "value": "被吞没",
+              "status": "bad"
+            },
+            {
+              "label": "execute 异常",
+              "value": "抛出 + 打印",
+              "status": "warn"
+            },
+            {
+              "label": "兜底方案",
+              "value": "afterExecute",
+              "status": "good"
+            }
+          ],
+          "legend": [
+            {
+              "color": "violet",
+              "label": "FutureTask 捕获"
+            },
+            {
+              "color": "orange",
+              "label": "异常被存储"
+            },
+            {
+              "color": "green",
+              "label": "get / 兜底浮现"
+            },
+            {
+              "color": "rose",
+              "label": "execute 抛出"
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "submit 与 execute 的异常分叉",
+            "nodes": [
+              {
+                "id": "submitN",
+                "x": 140,
+                "y": 100,
+                "w": 200,
+                "h": 58,
+                "label": "submit(task)",
+                "sublabel": "返回 Future<?>",
+                "tone": "blue",
+                "icon": "inbox"
+              },
+              {
+                "id": "ft",
+                "x": 420,
+                "y": 100,
+                "w": 240,
+                "h": 62,
+                "label": "FutureTask.run()",
+                "sublabel": "catch Throwable → setException",
+                "tone": "violet",
+                "icon": "lock",
+                "active": true
+              },
+              {
+                "id": "stored",
+                "x": 720,
+                "y": 100,
+                "w": 220,
+                "h": 62,
+                "label": "异常存入 outcome",
+                "sublabel": "不打印 / 不抛出 / 无日志",
+                "tone": "orange",
+                "icon": "database",
+                "active": true
+              },
+              {
+                "id": "get",
+                "x": 720,
+                "y": 230,
+                "w": 220,
+                "h": 62,
+                "label": "future.get()",
+                "sublabel": "ExecutionException 才浮现",
+                "tone": "green",
+                "icon": "check"
+              },
+              {
+                "id": "execN",
+                "x": 140,
+                "y": 380,
+                "w": 200,
+                "h": 58,
+                "label": "execute(task)",
+                "sublabel": "Runnable 直接执行",
+                "tone": "teal",
+                "icon": "zap"
+              },
+              {
+                "id": "thrown",
+                "x": 420,
+                "y": 380,
+                "w": 240,
+                "h": 62,
+                "label": "异常向上抛出",
+                "sublabel": "线程终止 · 默认打印堆栈",
+                "tone": "rose",
+                "icon": "alert"
+              },
+              {
+                "id": "handler",
+                "x": 720,
+                "y": 380,
+                "w": 220,
+                "h": 62,
+                "label": "UncaughtExceptionHandler",
+                "sublabel": "兜底捕获 · 记录日志",
+                "tone": "green",
+                "icon": "shield"
+              }
+            ],
+            "edges": [
+              {
+                "from": "submitN",
+                "to": "ft",
+                "tone": "blue",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "ft",
+                "to": "stored",
+                "label": "吞掉",
+                "tone": "rose",
+                "packets": 2,
+                "status": "error"
+              },
+              {
+                "from": "stored",
+                "to": "get",
+                "label": "仅当调用 get()",
+                "tone": "green",
+                "dashed": true,
+                "packets": 1
+              },
+              {
+                "from": "execN",
+                "to": "thrown",
+                "tone": "teal",
+                "packets": 1
+              },
+              {
+                "from": "thrown",
+                "to": "handler",
+                "label": "可自定义",
+                "tone": "green",
+                "packets": 1
+              }
+            ],
+            "callouts": [
+              {
+                "x": 60,
+                "y": 500,
+                "text": "submit 必须 get()，或重写 afterExecute() 兜底",
+                "tone": "orange"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 4,
+          "shortLabel": "优雅关闭",
+          "badge": "SOLUTION",
+          "title": "shutdown 与 shutdownNow：两种关闭语义",
+          "paragraphs": [
+            "`shutdown()`：状态 RUNNING → **SHUTDOWN**。拒绝新任务，但队列里的存量任务继续执行完，执行中的任务也不打断 —— 「下班前把手头的活干完」。",
+            "`shutdownNow()`：状态 → **STOP**。拒绝新任务、**清空队列并返回未执行任务列表**、对执行中线程发 `interrupt()` —— 「立刻停工」。任务是否真停取决于它是否响应中断。",
+            "两条路最终都汇入 **TIDYING**（任务全部终止、wc = 0）→ 执行 `terminated()` 钩子 → **TERMINATED**。标准收尾模板：`shutdown()` → `awaitTermination(timeout)` → 超时则 `shutdownNow()` → 再 await → 恢复中断标记。"
+          ],
+          "callout": {
+            "kind": "tip",
+            "text": "应用停机钩子（Spring `@PreDestroy` / JVM ShutdownHook）里务必关闭线程池，否则非守护线程会阻止 JVM 退出。"
+          },
+          "diffs": [
+            {
+              "kind": "add",
+              "text": "shutdown：拒新 + 消化存量（温和）"
+            },
+            {
+              "kind": "add",
+              "text": "shutdownNow：拒新 + 清队列 + 中断（强硬）"
+            },
+            {
+              "kind": "add",
+              "text": "awaitTermination 阻塞等待 TERMINATED"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "JDK 文档推荐的两阶段关闭",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "void shutdownAndAwaitTermination(ExecutorService pool) {\n    pool.shutdown(); // 拒新任务，消化存量\n    try {\n        if (!pool.awaitTermination(60, TimeUnit.SECONDS)) {\n            pool.shutdownNow(); // 超时：取消执行中任务\n            if (!pool.awaitTermination(60, TimeUnit.SECONDS))\n                System.err.println(\"Pool did not terminate\");\n        }\n    } catch (InterruptedException ex) {\n        pool.shutdownNow();\n        Thread.currentThread().interrupt();\n    }\n}",
+            "caption": "先礼后兵：给存量任务 60 秒，超时再强制中断。"
+          },
+          "kpis": [
+            {
+              "label": "优雅关闭",
+              "value": "shutdown()",
+              "status": "good"
+            },
+            {
+              "label": "强制关闭",
+              "value": "shutdownNow()",
+              "status": "warn"
+            },
+            {
+              "label": "等待收尾",
+              "value": "awaitTermination",
+              "status": "neutral"
+            }
+          ],
+          "legend": [
+            {
+              "color": "green",
+              "label": "RUNNING"
+            },
+            {
+              "color": "blue",
+              "label": "SHUTDOWN"
+            },
+            {
+              "color": "rose",
+              "label": "STOP"
+            },
+            {
+              "color": "orange",
+              "label": "TIDYING"
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "线程池关闭状态机",
+            "nodes": [
+              {
+                "id": "running",
+                "x": 140,
+                "y": 120,
+                "w": 190,
+                "h": 62,
+                "label": "RUNNING",
+                "sublabel": "收新任务 + 处理队列",
+                "tone": "green",
+                "icon": "play",
+                "active": true
+              },
+              {
+                "id": "shutdown",
+                "x": 450,
+                "y": 120,
+                "w": 210,
+                "h": 62,
+                "label": "SHUTDOWN",
+                "sublabel": "拒新任务 · 消化存量",
+                "tone": "blue",
+                "icon": "power"
+              },
+              {
+                "id": "stop",
+                "x": 450,
+                "y": 300,
+                "w": 210,
+                "h": 62,
+                "label": "STOP",
+                "sublabel": "拒新任务 · 中断执行中",
+                "tone": "rose",
+                "icon": "ban"
+              },
+              {
+                "id": "tidying",
+                "x": 740,
+                "y": 210,
+                "w": 190,
+                "h": 62,
+                "label": "TIDYING",
+                "sublabel": "任务终止 · wc = 0",
+                "tone": "orange",
+                "icon": "recycle"
+              },
+              {
+                "id": "terminated",
+                "x": 740,
+                "y": 380,
+                "w": 190,
+                "h": 62,
+                "label": "TERMINATED",
+                "sublabel": "terminated() 钩子完成",
+                "tone": "neutral",
+                "icon": "check"
+              }
+            ],
+            "edges": [
+              {
+                "from": "running",
+                "to": "shutdown",
+                "label": "shutdown()",
+                "tone": "blue",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "running",
+                "to": "stop",
+                "via": [
+                  [
+                    140,
+                    300
+                  ]
+                ],
+                "label": "shutdownNow()",
+                "labelAt": 0.6,
+                "tone": "rose",
+                "packets": 1
+              },
+              {
+                "from": "shutdown",
+                "to": "tidying",
+                "label": "队列空 & wc=0",
+                "tone": "orange",
+                "packets": 1
+              },
+              {
+                "from": "stop",
+                "to": "tidying",
+                "label": "wc = 0",
+                "tone": "orange",
+                "packets": 1
+              },
+              {
+                "from": "tidying",
+                "to": "terminated",
+                "label": "terminated()",
+                "tone": "neutral",
+                "packets": 1
+              }
+            ],
+            "callouts": [
+              {
+                "x": 60,
+                "y": 470,
+                "text": "awaitTermination(timeout) 阻塞等待收尾",
+                "tone": "teal"
+              },
+              {
+                "x": 60,
+                "y": 506,
+                "text": "shutdownNow 返回未执行的任务列表",
+                "tone": "orange"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 5,
+          "shortLabel": "参数估算",
+          "badge": "INSIGHT",
+          "title": "线程数怎么定：公式是起点，压测是终点",
+          "paragraphs": [
+            "经典估算：**CPU 密集型** ≈ N + 1（N 为核数，+1 用于缺页等偶发暂停时补位）；**IO 密集型** ≈ N × (1 + 等待时间/计算时间)，粗估常从 2N 起步。混合型任务考虑拆成两个池分别调。",
+            "但公式只是起点。真实系统有锁竞争、下游限流、GC 停顿，**必须压测校准**：逐步加压，观察队列长度、拒绝率、RT 与 CPU 利用率，找到吞吐拐点。",
+            "`ThreadPoolExecutor` 支持运行期 `setCorePoolSize()` / `setMaximumPoolSize()` / `setKeepAliveTime()`，配合配置中心就能做**动态线程池**（美团技术方案的思路）：监控告警驱动调参，不用重启发布。"
+          ],
+          "callout": {
+            "kind": "idea",
+            "text": "队列容量也是参数：太小吃不下抖动，太大掩盖过载、拉高 RT。给队列设上界并监控水位，比调线程数更重要。"
+          },
+          "diffs": [
+            {
+              "kind": "add",
+              "text": "CPU 密集 ≈ N+1；IO 密集 ≈ N×(1+W/C)"
+            },
+            {
+              "kind": "add",
+              "text": "setCorePoolSize 等支持运行期热更新"
+            }
+          ],
+          "kpis": [
+            {
+              "label": "CPU 密集",
+              "value": "N + 1",
+              "status": "neutral"
+            },
+            {
+              "label": "IO 密集",
+              "value": "≈ 2N 起步",
+              "status": "neutral"
+            },
+            {
+              "label": "校准方式",
+              "value": "压测",
+              "status": "good"
+            }
+          ],
+          "legend": [
+            {
+              "color": "blue",
+              "label": "CPU 密集"
+            },
+            {
+              "color": "teal",
+              "label": "IO 密集"
+            },
+            {
+              "color": "green",
+              "label": "压测校准"
+            },
+            {
+              "color": "violet",
+              "label": "动态调参"
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "从任务模型到线程数",
+            "nodes": [
+              {
+                "id": "cpu",
+                "x": 200,
+                "y": 110,
+                "w": 300,
+                "h": 70,
+                "label": "CPU 密集型",
+                "sublabel": "线程数 ≈ N + 1",
+                "tone": "blue",
+                "icon": "cpu"
+              },
+              {
+                "id": "io",
+                "x": 200,
+                "y": 260,
+                "w": 300,
+                "h": 70,
+                "label": "IO 密集型",
+                "sublabel": "线程数 ≈ N × (1 + 等待/计算)",
+                "tone": "teal",
+                "icon": "clock"
+              },
+              {
+                "id": "n",
+                "x": 200,
+                "y": 410,
+                "w": 300,
+                "h": 70,
+                "label": "N = CPU 核数",
+                "sublabel": "Runtime.availableProcessors()",
+                "tone": "neutral",
+                "icon": "gauge"
+              },
+              {
+                "id": "press",
+                "x": 660,
+                "y": 180,
+                "w": 300,
+                "h": 70,
+                "label": "压测校准",
+                "sublabel": "队列长度 / 拒绝率 / RT",
+                "tone": "green",
+                "icon": "sliders",
+                "active": true
+              },
+              {
+                "id": "dynamic",
+                "x": 660,
+                "y": 340,
+                "w": 300,
+                "h": 70,
+                "label": "动态调参",
+                "sublabel": "setCorePoolSize / setMaximumPoolSize",
+                "tone": "violet",
+                "icon": "zap"
+              }
+            ],
+            "edges": [
+              {
+                "from": "cpu",
+                "to": "press",
+                "tone": "blue",
+                "packets": 1
+              },
+              {
+                "from": "io",
+                "to": "press",
+                "tone": "teal",
+                "packets": 1
+              },
+              {
+                "from": "n",
+                "to": "cpu",
+                "via": [
+                  [
+                    40,
+                    410
+                  ],
+                  [
+                    40,
+                    110
+                  ]
+                ],
+                "tone": "neutral",
+                "dashed": true
+              },
+              {
+                "from": "n",
+                "to": "io",
+                "via": [
+                  [
+                    60,
+                    410
+                  ],
+                  [
+                    60,
+                    260
+                  ]
+                ],
+                "tone": "neutral",
+                "dashed": true
+              },
+              {
+                "from": "press",
+                "to": "dynamic",
+                "label": "运行期可调",
+                "tone": "violet",
+                "packets": 1
+              }
+            ],
+            "callouts": [
+              {
+                "x": 480,
+                "y": 520,
+                "text": "经验公式只是起点，一切以压测为准",
+                "tone": "orange"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 6,
+          "shortLabel": "最佳实践",
+          "badge": "RECAP",
+          "title": "生产四件套：命名、隔离、监控、动态",
+          "paragraphs": [
+            "**命名**：自定义 `ThreadFactory` 给线程起业务名（order-pool-1）。线程 dump、日志、监控里一眼定位是哪个池出了问题；默认 pool-1-thread-1 毫无信息量。",
+            "**隔离**：不同业务用不同线程池（舱壁模式）。一个下游超时拖垮共享池，会连坐所有业务 —— 隔离把故障限制在单个舱室。",
+            "**监控**：`getActiveCount()`、`getQueue().size()`、拒绝计数是三个必采指标，加上 `getPoolSize()` / `getLargestPoolSize()` 看水位历史。**动态**：把 core/max/队列容量接入配置中心，告警驱动热更新。",
+            "至此线程池的执行流程与注意事项全部走完。去实验台亲手调参，把「先核心 → 再入队 → 再扩容 → 最后拒绝」跑成肌肉记忆。"
+          ],
+          "recapTable": [
+            {
+              "question": "创建线程池的第一原则？",
+              "decision": "手动 new ThreadPoolExecutor，七参显式",
+              "because": "Executors 隐藏无界队列 / 无限线程，OOM 风险不可控。"
+            },
+            {
+              "question": "任务失败了为什么没日志？",
+              "decision": "submit 吞异常，必须 get 或 afterExecute 兜底",
+              "because": "FutureTask catch Throwable 后只存 outcome，不打印。"
+            },
+            {
+              "question": "停机时怎么处理线程池？",
+              "decision": "shutdown → awaitTermination → 超时 shutdownNow",
+              "because": "两阶段关闭兼顾存量任务完成与停机时限。"
+            },
+            {
+              "question": "参数拍脑袋定多少？",
+              "decision": "公式起步 + 压测校准 + 动态调参",
+              "because": "N+1 / 2N 只是近似，真实拐点要靠监控与压测找到。"
+            }
+          ],
+          "kpis": [
+            {
+              "label": "命名",
+              "value": "ThreadFactory",
+              "status": "good"
+            },
+            {
+              "label": "隔离",
+              "value": "业务分池",
+              "status": "good"
+            },
+            {
+              "label": "监控",
+              "value": "三指标",
+              "status": "good"
+            },
+            {
+              "label": "动态",
+              "value": "热更新",
+              "status": "good"
+            }
+          ],
+          "legend": [
+            {
+              "color": "blue",
+              "label": "命名"
+            },
+            {
+              "color": "teal",
+              "label": "隔离"
+            },
+            {
+              "color": "orange",
+              "label": "监控"
+            },
+            {
+              "color": "violet",
+              "label": "动态调参"
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "生产环境四件套",
+            "nodes": [
+              {
+                "id": "name",
+                "x": 220,
+                "y": 110,
+                "w": 320,
+                "h": 66,
+                "label": "自定义 ThreadFactory",
+                "sublabel": "命名线程 · 一眼定位问题池",
+                "tone": "blue",
+                "icon": "users"
+              },
+              {
+                "id": "isolate",
+                "x": 660,
+                "y": 110,
+                "w": 320,
+                "h": 66,
+                "label": "业务隔离线程池",
+                "sublabel": "舱壁模式 · 避免互相拖垮",
+                "tone": "teal",
+                "icon": "layers"
+              },
+              {
+                "id": "monitor",
+                "x": 220,
+                "y": 280,
+                "w": 320,
+                "h": 66,
+                "label": "监控三指标",
+                "sublabel": "activeCount / queue.size / 拒绝数",
+                "tone": "orange",
+                "icon": "gauge",
+                "active": true
+              },
+              {
+                "id": "dyn",
+                "x": 660,
+                "y": 280,
+                "w": 320,
+                "h": 66,
+                "label": "配置中心动态调参",
+                "sublabel": "core/max/queue 容量热更新",
+                "tone": "violet",
+                "icon": "sliders"
+              }
+            ],
+            "edges": [
+              {
+                "from": "monitor",
+                "to": "dyn",
+                "label": "告警驱动调参",
+                "tone": "violet",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "name",
+                "to": "monitor",
+                "via": [
+                  [
+                    220,
+                    200
+                  ]
+                ],
+                "tone": "orange",
+                "dashed": true
+              },
+              {
+                "from": "isolate",
+                "to": "dyn",
+                "via": [
+                  [
+                    660,
+                    200
+                  ]
+                ],
+                "tone": "violet",
+                "dashed": true
+              }
+            ],
+            "callouts": [
+              {
+                "x": 220,
+                "y": 420,
+                "text": "线程池不是银弹：先评估任务模型，再定参数",
+                "tone": "green"
+              },
+              {
+                "x": 220,
+                "y": 456,
+                "text": "队列容量也要可监控、可调整（自定义可变容量队列）",
+                "tone": "neutral"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

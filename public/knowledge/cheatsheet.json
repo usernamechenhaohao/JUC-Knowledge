@@ -1,0 +1,285 @@
+{
+  "hero": {
+    "eyebrow": "CHEATSHEET · 速查表",
+    "title": "ThreadPoolExecutor 速查表",
+    "subtitle": "执行流程、七大参数、拒绝策略、工厂陷阱、状态机与生产实践，一页速查。",
+    "stats": [
+      {
+        "label": "核心参数",
+        "value": "7 个",
+        "tone": "blue"
+      },
+      {
+        "label": "决策层级",
+        "value": "4 级",
+        "tone": "green"
+      },
+      {
+        "label": "拒绝策略",
+        "value": "4 种",
+        "tone": "rose"
+      },
+      {
+        "label": "池状态",
+        "value": "5 种",
+        "tone": "violet"
+      }
+    ]
+  },
+  "flowSteps": [
+    {
+      "order": 1,
+      "name": "核心线程",
+      "detail": "workerCount < corePoolSize → addWorker(command, true)，新建核心线程直接执行",
+      "tone": "green"
+    },
+    {
+      "order": 2,
+      "name": "入队",
+      "detail": "核心已满 → workQueue.offer(command)，入队成功后二次校验池状态与 wc=0",
+      "tone": "orange"
+    },
+    {
+      "order": 3,
+      "name": "扩容",
+      "detail": "队列已满 → addWorker(command, false)，非核心线程执行，上限 maximumPoolSize",
+      "tone": "teal"
+    },
+    {
+      "order": 4,
+      "name": "拒绝",
+      "detail": "wc = max 且队列满 → handler.rejectedExecution(command, this)",
+      "tone": "rose"
+    }
+  ],
+  "params": [
+    {
+      "param": "corePoolSize",
+      "type": "int",
+      "role": "核心线程数",
+      "note": "常驻线程（allowCoreThreadTimeOut=false 时不回收）",
+      "tone": "green"
+    },
+    {
+      "param": "maximumPoolSize",
+      "type": "int",
+      "role": "最大线程数",
+      "note": "队列满后才扩容到这个上限；无界队列下永远失效",
+      "tone": "teal"
+    },
+    {
+      "param": "keepAliveTime",
+      "type": "long",
+      "role": "空闲存活时间",
+      "note": "超出 core 的线程 poll 超时即回收",
+      "tone": "violet"
+    },
+    {
+      "param": "unit",
+      "type": "TimeUnit",
+      "role": "时间单位",
+      "note": "keepAliveTime 的单位",
+      "tone": "neutral"
+    },
+    {
+      "param": "workQueue",
+      "type": "BlockingQueue",
+      "role": "任务队列",
+      "note": "必须有界！ArrayBlockingQueue / 有界 LinkedBlockingQueue",
+      "tone": "orange"
+    },
+    {
+      "param": "threadFactory",
+      "type": "ThreadFactory",
+      "role": "线程工厂",
+      "note": "自定义命名 / 优先级 / UncaughtExceptionHandler",
+      "tone": "blue"
+    },
+    {
+      "param": "handler",
+      "type": "RejectedExecutionHandler",
+      "role": "拒绝策略",
+      "note": "默认 AbortPolicy；生产建议反压或自定义",
+      "tone": "rose"
+    }
+  ],
+  "policies": [
+    {
+      "name": "AbortPolicy",
+      "behavior": "抛 RejectedExecutionException",
+      "risk": "调用方必须捕获，否则冒泡",
+      "scene": "默认；需要快速失败感知",
+      "tone": "rose"
+    },
+    {
+      "name": "CallerRunsPolicy",
+      "behavior": "调用者线程自己 run()",
+      "risk": "占用提交线程，入口变慢",
+      "scene": "不允许丢任务，可接受降速（反压）",
+      "tone": "blue"
+    },
+    {
+      "name": "DiscardPolicy",
+      "behavior": "静默丢弃新任务",
+      "risk": "无任何通知，任务凭空消失",
+      "scene": "可丢弃的采样 / 心跳类任务",
+      "tone": "neutral"
+    },
+    {
+      "name": "DiscardOldestPolicy",
+      "behavior": "丢队头最老任务，重试 execute",
+      "risk": "老任务被牺牲；池 shutdown 时直接丢新任务",
+      "scene": "只关心最新数据的场景",
+      "tone": "orange"
+    }
+  ],
+  "factories": [
+    {
+      "factory": "newFixedThreadPool(n)",
+      "core": "n",
+      "max": "n",
+      "queue": "LinkedBlockingQueue（无界）",
+      "risk": "任务堆积 → 堆 OOM"
+    },
+    {
+      "factory": "newSingleThreadExecutor()",
+      "core": "1",
+      "max": "1",
+      "queue": "LinkedBlockingQueue（无界）",
+      "risk": "任务堆积 → 堆 OOM"
+    },
+    {
+      "factory": "newCachedThreadPool()",
+      "core": "0",
+      "max": "Integer.MAX_VALUE",
+      "queue": "SynchronousQueue（容量 0）",
+      "risk": "线程爆炸 → 原生线程 OOM"
+    },
+    {
+      "factory": "newScheduledThreadPool(n)",
+      "core": "n",
+      "max": "Integer.MAX_VALUE",
+      "queue": "DelayedWorkQueue（无界）",
+      "risk": "任务堆积 → 堆 OOM"
+    }
+  ],
+  "states": [
+    {
+      "state": "RUNNING",
+      "meaning": "接收新任务 + 处理队列任务",
+      "transition": "初始状态（ctl 高 3 位 = 111）"
+    },
+    {
+      "state": "SHUTDOWN",
+      "meaning": "拒新任务，继续消化队列存量",
+      "transition": "shutdown() 触发"
+    },
+    {
+      "state": "STOP",
+      "meaning": "拒新任务，清队列 + 中断执行中任务",
+      "transition": "shutdownNow() 触发"
+    },
+    {
+      "state": "TIDYING",
+      "meaning": "所有任务终止，workerCount = 0",
+      "transition": "SHUTDOWN 且队列空 / STOP 且 wc=0"
+    },
+    {
+      "state": "TERMINATED",
+      "meaning": "terminated() 钩子执行完毕",
+      "transition": "TIDYING → terminated() 返回"
+    }
+  ],
+  "sizing": [
+    {
+      "label": "CPU 密集型",
+      "formula": "N + 1",
+      "note": "N = CPU 核数；+1 补位偶发缺页暂停"
+    },
+    {
+      "label": "IO 密集型",
+      "formula": "N × (1 + 等待/计算)",
+      "note": "粗估 2N 起步，等待占比越高线程越多"
+    },
+    {
+      "label": "混合型",
+      "formula": "拆分为两个池",
+      "note": "CPU 与 IO 任务分池，各自独立调参"
+    },
+    {
+      "label": "最终校准",
+      "formula": "压测 + 监控",
+      "note": "观察队列水位 / 拒绝率 / RT 找吞吐拐点"
+    }
+  ],
+  "practices": [
+    {
+      "practice": "手动 new ThreadPoolExecutor",
+      "why": "七参显式，杜绝 Executors 的无界队列 / 无限线程",
+      "lessonSlug": "pitfalls",
+      "stepNumber": 1
+    },
+    {
+      "practice": "有界队列 + 合理拒绝策略",
+      "why": "让 maximumPoolSize 与拒绝策略真正生效",
+      "lessonSlug": "execute-flow",
+      "stepNumber": 5
+    },
+    {
+      "practice": "submit 必须 get 或 afterExecute 兜底",
+      "why": "FutureTask 吞异常，失败静默无日志",
+      "lessonSlug": "pitfalls",
+      "stepNumber": 3
+    },
+    {
+      "practice": "两阶段优雅关闭",
+      "why": "shutdown → awaitTermination → 超时 shutdownNow",
+      "lessonSlug": "pitfalls",
+      "stepNumber": 4
+    },
+    {
+      "practice": "ThreadFactory 命名 + 业务分池",
+      "why": "快速定位问题池，舱壁隔离故障",
+      "lessonSlug": "pitfalls",
+      "stepNumber": 6
+    },
+    {
+      "practice": "监控三指标 + 动态调参",
+      "why": "activeCount / queue.size / 拒绝数，配置中心热更新",
+      "lessonSlug": "pitfalls",
+      "stepNumber": 5
+    }
+  ],
+  "links": [
+    {
+      "label": "execute() 四级决策链",
+      "lessonSlug": "execute-flow",
+      "stepNumber": 1
+    },
+    {
+      "label": "入队与二次校验",
+      "lessonSlug": "execute-flow",
+      "stepNumber": 3
+    },
+    {
+      "label": "线程回收 getTask()",
+      "lessonSlug": "execute-flow",
+      "stepNumber": 6
+    },
+    {
+      "label": "Executors 的 OOM 陷阱",
+      "lessonSlug": "pitfalls",
+      "stepNumber": 1
+    },
+    {
+      "label": "四种拒绝策略",
+      "lessonSlug": "pitfalls",
+      "stepNumber": 2
+    },
+    {
+      "label": "关闭状态机",
+      "lessonSlug": "pitfalls",
+      "stepNumber": 4
+    }
+  ]
+}

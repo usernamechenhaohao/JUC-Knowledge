@@ -1,0 +1,924 @@
+/* ============================================================================
+   Stage Engine — Tactile Technical-Paper Stage, HUD, SVG Craft & Step Timeline
+   ============================================================================ */
+
+:root {
+  --stage-shadow-ambient: rgba(29, 27, 24, 0.13);
+  --stage-highlight-top: rgba(255, 255, 255, 0.55);
+  --stage-hud-bg: rgba(249, 242, 232, 0.94);
+  --stage-swatch-hatch: rgba(70, 65, 59, 0.14);
+  --stage-slot-empty: rgba(70, 65, 59, 0.07);
+}
+
+[data-theme='dark'] {
+  --stage-shadow-ambient: rgba(0, 0, 0, 0.42);
+  --stage-highlight-top: rgba(255, 255, 255, 0.1);
+  --stage-hud-bg: rgba(37, 33, 28, 0.94);
+  --stage-swatch-hatch: rgba(239, 230, 214, 0.14);
+  --stage-slot-empty: rgba(239, 230, 214, 0.07);
+}
+
+/* ----------------------------------------------------------------------------
+   Main Stage Panel Column
+   ---------------------------------------------------------------------------- */
+
+.stage-panel {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 10px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+/* ----------------------------------------------------------------------------
+   1. Lesson Header (Breadcrumb + Title + Pastel Meta Pills)
+   ---------------------------------------------------------------------------- */
+
+.stage-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stage-header-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stage-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+.stage-breadcrumb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2.5px;
+  background: currentColor;
+  border: 1px solid var(--edge);
+  flex-shrink: 0;
+}
+
+.stage-breadcrumb-chapter {
+  color: var(--ink-2);
+}
+
+.stage-breadcrumb-sep {
+  color: var(--line-strong);
+  font-weight: 400;
+}
+
+.stage-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.24;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-subtitle {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.38;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-meta-pills {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 1px;
+}
+
+.stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 23px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--edge);
+  box-shadow: var(--pop-shadow-sm);
+  font-size: 10.2px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.stage-pill--duration {
+  background: var(--orange);
+}
+
+.stage-pill--level-entry {
+  background: var(--mint);
+}
+
+.stage-pill--level-core {
+  background: var(--blue);
+}
+
+.stage-pill--level-advanced {
+  background: var(--violet);
+}
+
+.stage-pill--steps {
+  background: var(--sheet);
+}
+
+/* ----------------------------------------------------------------------------
+   2. Main Stage Card (HUD + Interactive SVG Viewport + Legend Footer)
+   ---------------------------------------------------------------------------- */
+
+.stage-card {
+  flex: 1;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--stage-bg);
+  box-shadow:
+    inset 0 1px 0 var(--stage-highlight-top),
+    0 2px 10px rgba(29, 27, 24, 0.04);
+  overflow: hidden;
+}
+
+/* Top HUD Bar */
+.stage-hud {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 7px 10px 4px;
+  z-index: 4;
+  position: relative;
+}
+
+.stage-kpis {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.kpi-chip {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 185px;
+  padding: 3px 7px 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: var(--stage-hud-bg);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s var(--ease-snappy);
+}
+
+.kpi-chip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--edge);
+}
+
+.kpi-chip--good::before {
+  background: var(--kpi-good);
+}
+
+.kpi-chip--warn::before {
+  background: var(--kpi-warn);
+}
+
+.kpi-chip--bad::before {
+  background: var(--kpi-bad);
+}
+
+.kpi-chip--neutral::before {
+  background: var(--edge);
+}
+
+.kpi-chip--flash {
+  animation: kpiChipFlash 0.62s var(--ease-snappy);
+}
+
+.kpi-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-value {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.22;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-value--in {
+  animation: kpiValueIn 0.34s var(--ease-snappy);
+}
+
+@keyframes kpiValueIn {
+  0% {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kpiChipFlash {
+  0% {
+    border-color: var(--edge);
+    box-shadow: 0 0 0 2px rgba(60, 110, 168, 0.32);
+    transform: translateY(-1px);
+  }
+  100% {
+    border-color: var(--line-strong);
+    box-shadow: none;
+    transform: translateY(0);
+  }
+}
+
+/* Right HUD Controls */
+.stage-controls {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.stage-ctrl-btn {
+  height: 27px;
+  padding: 0 7px;
+  font-size: 11px;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.stage-ctrl-btn--playing {
+  background: var(--blue);
+  border-color: var(--edge);
+  color: var(--ink);
+}
+
+.stage-ctrl-btn--playing:hover:not(:disabled) {
+  background: var(--blue-2);
+}
+
+.stage-ctrl-btn .kbd {
+  height: 16px;
+  min-width: 16px;
+  font-size: 9px;
+  padding: 0 3.5px;
+}
+
+.stage-zoom-group {
+  display: inline-flex;
+  align-items: center;
+  height: 27px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--stage-hud-bg);
+  overflow: hidden;
+}
+
+.stage-zoom-btn {
+  height: 100%;
+  min-width: 22px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.stage-zoom-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--ink);
+}
+
+.stage-zoom-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.stage-zoom-readout {
+  min-width: 37px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.stage-zoom-readout--modified {
+  color: var(--ink);
+  background: var(--paper-2);
+}
+
+/* ----------------------------------------------------------------------------
+   Center Interactive Canvas Viewport
+   ---------------------------------------------------------------------------- */
+
+.stage-viewport {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.stage-canvas-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  position: relative;
+}
+
+.stage-canvas-root--dragging {
+  cursor: grabbing;
+}
+
+.stage-canvas-transform {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform;
+  transform-origin: center center;
+}
+
+.stage-svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  overflow: visible;
+  font-family: var(--font-mono);
+}
+
+.stage-canvas-transform > .stage-svg {
+  animation: stageSettle 0.5s var(--ease-snappy) both;
+  transform-origin: center;
+}
+
+/* Pause state freezes all CSS keyframe animations inside SVG */
+.stage-canvas--paused *,
+.stage-canvas--paused *::before,
+.stage-canvas--paused *::after {
+  animation-play-state: paused !important;
+}
+
+/* SVG Entrance & Ambient Animations
+   Never set CSS `transform` inside keyframes applied to SVG `<g transform="translate(...)">`
+   elements — CSS transform overrides the SVG transform attribute. Apply motion
+   classes to an inner <g> without an SVG transform attribute. */
+.stage-node-enter {
+  animation: stageNodePop 0.38s var(--ease-snappy) both;
+}
+
+.stage-zone-enter {
+  animation: stageFadeIn 0.3s ease both;
+}
+
+.stage-edge-enter {
+  animation: stageFadeIn 0.28s ease both;
+}
+
+.stage-edge-draw {
+  stroke-dasharray: 1.05;
+  stroke-dashoffset: 1.05;
+  animation: stagePathDraw 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stage-packet-enter {
+  animation: stageFadeIn 0.24s ease both;
+}
+
+.stage-label-enter {
+  animation: stageNodePop 0.26s var(--ease-snappy) both;
+}
+
+.stage-active-pulse {
+  animation: stageActivePulse 2.2s ease-in-out infinite;
+}
+
+.stage-running-stripe {
+  animation: stageStripeShift 1.1s linear infinite;
+}
+
+.stage-dash-flow {
+  animation: stageDashFlow 1.6s linear infinite;
+}
+
+@keyframes stageNodePop {
+  0% {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes stageSettle {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes stageFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes stagePathDraw {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 1.05;
+  }
+  2% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes stageActivePulse {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.48;
+  }
+}
+
+@keyframes stageStripeShift {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(16px);
+  }
+}
+
+@keyframes stageDashFlow {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Stage Bottom Strip (Legend + Blueprint Stamp)
+   ---------------------------------------------------------------------------- */
+
+.stage-footer-strip {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 12px 9px;
+  z-index: 4;
+  min-height: 34px;
+}
+
+.stage-legend {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--stage-hud-bg);
+  max-width: 72%;
+}
+
+.stage-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.8px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.stage-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  flex-shrink: 0;
+}
+
+.stage-legend-dash {
+  width: 16px;
+  height: 0;
+  border-top: 2px dashed currentColor;
+  flex-shrink: 0;
+}
+
+.stage-blueprint-stamp {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 44%;
+}
+
+.stage-blueprint-fig {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--line-strong);
+  background: var(--sheet);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.stage-blueprint-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------------------
+   3. Bottom "本课步骤" Horizontal Step Timeline Card
+   ---------------------------------------------------------------------------- */
+
+.stage-timeline-card {
+  flex-shrink: 0;
+  border-radius: 11px;
+  border: 1px solid var(--line-strong);
+  background: var(--sheet);
+  padding: 7px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.timeline-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+}
+
+.timeline-heading-en {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.timeline-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeline-step-counter {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  background: var(--paper-2);
+}
+
+.timeline-nudge-btn {
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--line-strong);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.timeline-nudge-btn:hover:not(:disabled) {
+  border-color: var(--edge);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.timeline-nudge-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.timeline-track-scroll {
+  overflow-x: hidden;
+  overflow-y: visible;
+  padding-bottom: 0;
+}
+
+.timeline-track {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+}
+
+.timeline-node {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 1px 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  text-align: center;
+  transition: color 0.14s ease;
+}
+
+.timeline-node::before,
+.timeline-node::after {
+  content: '';
+  position: absolute;
+  top: 11.5px;
+  height: 2px;
+  background: var(--line-strong);
+  z-index: 0;
+  transition: background-color 0.2s ease;
+}
+
+.timeline-node::before {
+  left: 0;
+  right: 50%;
+}
+
+.timeline-node::after {
+  left: 50%;
+  right: 0;
+}
+
+.timeline-node:first-child::before {
+  display: none;
+}
+
+.timeline-node:last-child::after {
+  display: none;
+}
+
+.timeline-node--done::before,
+.timeline-node--done::after,
+.timeline-node--active::before {
+  background: var(--blue-stroke);
+}
+
+.timeline-circle {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition:
+    transform 0.14s var(--ease-snappy),
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+.timeline-node:hover .timeline-circle {
+  border-color: var(--edge);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.timeline-node--done .timeline-circle {
+  background: var(--mint);
+  border-color: var(--green-stroke);
+  color: var(--ink);
+}
+
+.timeline-node--active .timeline-circle {
+  background: var(--blue);
+  border: 2px solid var(--edge);
+  color: var(--ink);
+  box-shadow: var(--pop-shadow-sm);
+  transform: translateY(-1px) scale(1.05);
+}
+
+.timeline-label {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted);
+  width: 100%;
+  max-width: 100%;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 1px;
+}
+
+.timeline-node--done .timeline-label {
+  color: var(--ink-2);
+}
+
+.timeline-node--active .timeline-label {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+/* ----------------------------------------------------------------------------
+   Responsive & Reduced Motion
+   ---------------------------------------------------------------------------- */
+
+@media (max-width: 1440px) {
+  .stage-ctrl-btn .kbd {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .stage-title {
+    font-size: 16.5px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .stage-panel {
+    height: auto;
+    overflow: visible;
+    padding: 12px 12px 14px;
+  }
+
+  .stage-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .stage-title,
+  .stage-subtitle {
+    white-space: normal;
+  }
+
+  .stage-card {
+    min-height: 440px;
+  }
+
+  .stage-hud {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stage-controls {
+    justify-content: flex-end;
+  }
+
+  .stage-legend {
+    max-width: 100%;
+  }
+
+  .stage-blueprint-stamp {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .timeline-node:not(.timeline-node--active) .timeline-label {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-canvas-transform > .stage-svg,
+  .stage-node-enter,
+  .stage-zone-enter,
+  .stage-edge-enter,
+  .stage-edge-draw,
+  .stage-packet-enter,
+  .stage-label-enter,
+  .stage-active-pulse,
+  .stage-running-stripe,
+  .stage-dash-flow,
+  .kpi-chip--flash,
+  .kpi-value--in {
+    animation: none !important;
+    opacity: 1 !important;
+    stroke-dashoffset: 0 !important;
+    transform: none !important;
+  }
+}

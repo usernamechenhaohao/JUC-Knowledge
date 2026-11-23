@@ -1,0 +1,1854 @@
+{
+  "id": "ch01",
+  "number": 1,
+  "title": "线程池执行流程",
+  "color": "blue",
+  "lessons": [
+    {
+      "id": "l-execute-flow",
+      "slug": "execute-flow",
+      "chapterId": "ch01",
+      "chapterNumber": 1,
+      "chapterTitle": "线程池执行流程",
+      "lessonIndexInChapter": 1,
+      "totalInChapter": 1,
+      "title": "execute() 四级决策链",
+      "subtitle": "ThreadPoolExecutor 从任务提交到拒绝兜底的完整执行流程",
+      "durationMin": 12,
+      "level": "核心",
+      "objectives": [
+        {
+          "id": "o1",
+          "text": "理解 `ctl` 如何用高 3 位 + 低 29 位打包状态与线程数",
+          "completedAtStep": 1
+        },
+        {
+          "id": "o2",
+          "text": "说出「先核心 → 再入队 → 再扩容 → 最后拒绝」的顺序",
+          "completedAtStep": 5
+        },
+        {
+          "id": "o3",
+          "text": "解释入队成功后的 double-check 在防什么",
+          "completedAtStep": 3
+        },
+        {
+          "id": "o4",
+          "text": "区分 take() 与 poll(keepAliveTime) 的回收语义",
+          "completedAtStep": 6
+        },
+        {
+          "id": "o5",
+          "text": "记住默认拒绝策略是 AbortPolicy 抛异常",
+          "completedAtStep": 5
+        }
+      ],
+      "steps": [
+        {
+          "stepNumber": 1,
+          "shortLabel": "提交入口",
+          "badge": "TECHNIQUE",
+          "title": "execute()：一切从 ctl 开始",
+          "paragraphs": [
+            "线程池的入口是 `execute(Runnable command)`。它先做 `null` 检查，然后读取 **ctl** —— 一个 `AtomicInteger`，高 3 位存运行状态（RUNNING / SHUTDOWN / STOP / TIDYING / TERMINATED），低 29 位存 `workerCount`。",
+            "把两个字段打包进一个整数，意味着「检查状态 + 检查线程数 + 增减线程数」可以用**一次 CAS** 原子完成，避免了状态与数量之间的竞态。这是整个线程池无锁设计的基石。"
+          ],
+          "callout": {
+            "kind": "idea",
+            "text": "`workerCountOf(c) = c & CAPACITY`，`runStateOf(c) = c & ~CAPACITY`。CAPACITY = (1 << 29) - 1，所以线程池理论上限约 5.3 亿个线程。"
+          },
+          "diffs": [
+            {
+              "kind": "add",
+              "text": "任务 T1 进入 `execute()`，读取 `ctl`"
+            },
+            {
+              "kind": "add",
+              "text": "当前 `workerCount = 0`，池状态 RUNNING"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "execute() 第一段",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "public void execute(Runnable command) {\n    if (command == null)\n        throw new NullPointerException();\n    // ctl: 高3位运行状态 + 低29位线程数\n    int c = ctl.get();\n    if (workerCountOf(c) < corePoolSize) {\n        if (addWorker(command, true))\n            return;\n        c = ctl.get();\n    }\n    // ... 后续两级决策\n}",
+            "caption": "先判空，再读 `ctl`，第一级决策只看 `workerCount < corePoolSize`。"
+          },
+          "kpis": [
+            {
+              "label": "workerCount",
+              "value": "0 / 2",
+              "status": "neutral"
+            },
+            {
+              "label": "队列占用",
+              "value": "0 / 4",
+              "status": "neutral"
+            },
+            {
+              "label": "池状态",
+              "value": "RUNNING",
+              "status": "good"
+            },
+            {
+              "label": "拒绝次数",
+              "value": "0",
+              "status": "neutral"
+            }
+          ],
+          "legend": [
+            {
+              "color": "green",
+              "label": "核心线程"
+            },
+            {
+              "color": "teal",
+              "label": "非核心线程"
+            },
+            {
+              "color": "orange",
+              "label": "阻塞队列"
+            },
+            {
+              "color": "rose",
+              "label": "拒绝"
+            },
+            {
+              "color": "teal",
+              "label": "getTask 取任务",
+              "dashed": true
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "任务提交入口",
+            "nodes": [
+              {
+                "id": "submit",
+                "x": 120,
+                "y": 78,
+                "w": 180,
+                "h": 58,
+                "label": "execute(command)",
+                "sublabel": "任务提交入口 · null 检查",
+                "tone": "blue",
+                "icon": "zap",
+                "active": true
+              },
+              {
+                "id": "d1",
+                "x": 365,
+                "y": 78,
+                "w": 200,
+                "h": 84,
+                "label": "wc < corePoolSize ?",
+                "sublabel": "第一级：核心线程",
+                "tone": "blue",
+                "shape": "diamond",
+                "dimmed": true
+              }
+            ],
+            "edges": [
+              {
+                "from": "submit",
+                "to": "d1",
+                "packets": 2,
+                "status": "active",
+                "tone": "blue"
+              }
+            ],
+            "callouts": [
+              {
+                "x": 60,
+                "y": 180,
+                "text": "ctl = 运行状态(高3位) + workerCount(低29位)",
+                "tone": "violet"
+              },
+              {
+                "x": 60,
+                "y": 216,
+                "text": "一个 AtomicInteger 打包两个字段，CAS 一次更新",
+                "tone": "neutral"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 2,
+          "shortLabel": "核心线程",
+          "badge": "TECHNIQUE",
+          "title": "第一级：wc < corePoolSize → addWorker",
+          "paragraphs": [
+            "只要当前线程数小于 `corePoolSize`，就调用 `addWorker(command, true)` **新建一个核心线程**并把任务作为它的第一个任务（firstTask）直接执行。",
+            "注意一个反直觉的细节：**即使已有空闲的核心线程，只要数量没到 core，仍然会新建线程**。只有 core 满之后，新任务才会走队列复用空闲线程。所以预热期线程数是单调涨到 core 的。",
+            "`addWorker` 内部在 `mainLock` 保护下把 Worker 加入 `HashSet<Worker>`，然后 `t.start()` 启动线程。Worker 本身继承 AQS，用不可重入锁标识「正在执行任务」。"
+          ],
+          "callout": {
+            "kind": "tip",
+            "text": "`prestartAllCoreThreads()` 可以提前把核心线程全部启动，避免冷启动时集中建线程的抖动。"
+          },
+          "diffs": [
+            {
+              "kind": "add",
+              "text": "Worker-1 创建，`workerCount: 0 → 1`"
+            },
+            {
+              "kind": "add",
+              "text": "T1 作为 firstTask 直接执行，不经过队列"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "addWorker() 核心检查",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "private boolean addWorker(Runnable firstTask, boolean core) {\n    retry:\n    for (;;) {\n        int c = ctl.get();\n        // ... 运行状态检查省略\n        for (;;) {\n            int wc = workerCountOf(c);\n            if (wc >= CAPACITY ||\n                wc >= (core ? corePoolSize : maximumPoolSize))\n                return false;\n            if (compareAndIncrementWorkerCount(c))\n                break retry;\n            c = ctl.get();\n            // CAS 失败则重试\n        }\n    }\n    // mainLock 下加入 workers 集合，t.start()\n}",
+            "caption": "`core` 参数决定上限用 `corePoolSize` 还是 `maximumPoolSize`。"
+          },
+          "kpis": [
+            {
+              "label": "workerCount",
+              "value": "1 / 2",
+              "status": "good"
+            },
+            {
+              "label": "队列占用",
+              "value": "0 / 4",
+              "status": "neutral"
+            },
+            {
+              "label": "池状态",
+              "value": "RUNNING",
+              "status": "good"
+            },
+            {
+              "label": "拒绝次数",
+              "value": "0",
+              "status": "neutral"
+            }
+          ],
+          "legend": [
+            {
+              "color": "green",
+              "label": "核心线程"
+            },
+            {
+              "color": "teal",
+              "label": "非核心线程"
+            },
+            {
+              "color": "orange",
+              "label": "阻塞队列"
+            },
+            {
+              "color": "rose",
+              "label": "拒绝"
+            },
+            {
+              "color": "teal",
+              "label": "getTask 取任务",
+              "dashed": true
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "第一级：创建核心线程",
+            "nodes": [
+              {
+                "id": "submit",
+                "x": 120,
+                "y": 78,
+                "w": 180,
+                "h": 58,
+                "label": "execute(command)",
+                "sublabel": "任务提交入口 · null 检查",
+                "tone": "blue",
+                "icon": "zap"
+              },
+              {
+                "id": "d1",
+                "x": 365,
+                "y": 78,
+                "w": 200,
+                "h": 84,
+                "label": "wc < corePoolSize ?",
+                "sublabel": "第一级：核心线程",
+                "tone": "blue",
+                "shape": "diamond",
+                "active": true
+              },
+              {
+                "id": "addCore",
+                "x": 640,
+                "y": 78,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, true)",
+                "sublabel": "新建核心线程直接执行",
+                "tone": "green",
+                "icon": "users",
+                "active": true
+              }
+            ],
+            "zones": [
+              {
+                "id": "workers",
+                "x": 770,
+                "y": 36,
+                "w": 214,
+                "h": 252,
+                "label": "Worker 集合",
+                "sublabel": "HashSet + mainLock",
+                "tone": "green",
+                "items": [
+                  {
+                    "label": "Worker-1",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "running",
+                    "badge": "core"
+                  }
+                ],
+                "columns": 1
+              }
+            ],
+            "edges": [
+              {
+                "from": "submit",
+                "to": "d1",
+                "tone": "blue"
+              },
+              {
+                "from": "d1",
+                "to": "addCore",
+                "label": "是 · 有空位",
+                "tone": "green",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "addCore",
+                "to": "workers",
+                "via": [
+                  [
+                    758,
+                    78
+                  ]
+                ],
+                "tone": "green",
+                "packets": 1
+              }
+            ],
+            "callouts": [
+              {
+                "x": 60,
+                "y": 180,
+                "text": "即使有空闲核心线程，也会新建线程直到 core 满",
+                "tone": "orange"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 3,
+          "shortLabel": "入队缓冲",
+          "badge": "TECHNIQUE",
+          "title": "第二级：core 满 → workQueue.offer()",
+          "paragraphs": [
+            "核心线程满了（本例 core = 2），新任务不再建线程，而是尝试 `workQueue.offer(command)` **非阻塞入队**。队列是线程池的缓冲带，也是「先入队还是先扩容」这个问题的答案所在。",
+            "入队成功后还有一段关键的 **double-check**：重新读 `ctl`，如果发现池已经不是 RUNNING（可能被并发 shutdown），就把任务从队列移除并拒绝；如果发现 `workerCount == 0`（比如 core = 0 的缓存池），就补一个空任务 Worker 来消费队列。",
+            "此后 Worker 通过 `getTask()` 循环从队列取任务执行 —— 线程复用就发生在这里：**线程不退出，任务排队来**。"
+          ],
+          "callout": {
+            "kind": "warn",
+            "text": "队列选型直接决定池的行为：`ArrayBlockingQueue` 有界可控；`LinkedBlockingQueue` 默认无界（Integer.MAX_VALUE），是 OOM 的常见源头。"
+          },
+          "diffs": [
+            {
+              "kind": "change",
+              "text": "core 已满：Worker-1 / Worker-2 都在执行"
+            },
+            {
+              "kind": "add",
+              "text": "T3、T4 `offer` 成功，队列占用 2/4"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "execute() 第二段 + recheck",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "if (isRunning(c) && workQueue.offer(command)) {\n    int recheck = ctl.get();\n    if (! isRunning(recheck) && remove(command))\n        reject(command);\n    else if (workerCountOf(recheck) == 0)\n        addWorker(null, false);\n}\nelse if (!addWorker(command, false))\n    reject(command);",
+            "caption": "入队 → 复查池状态 → 必要时补线程，三步缺一不可。"
+          },
+          "kpis": [
+            {
+              "label": "workerCount",
+              "value": "2 / 2",
+              "status": "warn"
+            },
+            {
+              "label": "队列占用",
+              "value": "2 / 4",
+              "status": "warn"
+            },
+            {
+              "label": "池状态",
+              "value": "RUNNING",
+              "status": "good"
+            },
+            {
+              "label": "拒绝次数",
+              "value": "0",
+              "status": "neutral"
+            }
+          ],
+          "legend": [
+            {
+              "color": "green",
+              "label": "核心线程"
+            },
+            {
+              "color": "teal",
+              "label": "非核心线程"
+            },
+            {
+              "color": "orange",
+              "label": "阻塞队列"
+            },
+            {
+              "color": "rose",
+              "label": "拒绝"
+            },
+            {
+              "color": "teal",
+              "label": "getTask 取任务",
+              "dashed": true
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "第二级：入队缓冲",
+            "nodes": [
+              {
+                "id": "submit",
+                "x": 120,
+                "y": 78,
+                "w": 180,
+                "h": 58,
+                "label": "execute(command)",
+                "sublabel": "任务提交入口 · null 检查",
+                "tone": "blue",
+                "icon": "zap"
+              },
+              {
+                "id": "d1",
+                "x": 365,
+                "y": 78,
+                "w": 200,
+                "h": 84,
+                "label": "wc < corePoolSize ?",
+                "sublabel": "第一级：核心线程",
+                "tone": "blue",
+                "shape": "diamond"
+              },
+              {
+                "id": "addCore",
+                "x": 640,
+                "y": 78,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, true)",
+                "sublabel": "新建核心线程直接执行",
+                "tone": "green",
+                "icon": "users",
+                "dimmed": true
+              },
+              {
+                "id": "d2",
+                "x": 365,
+                "y": 240,
+                "w": 200,
+                "h": 84,
+                "label": "workQueue.offer() ?",
+                "sublabel": "第二级：入队缓冲",
+                "tone": "orange",
+                "shape": "diamond",
+                "active": true
+              }
+            ],
+            "zones": [
+              {
+                "id": "workers",
+                "x": 770,
+                "y": 36,
+                "w": 214,
+                "h": 252,
+                "label": "Worker 集合",
+                "sublabel": "core 已满 2/2",
+                "tone": "green",
+                "items": [
+                  {
+                    "label": "Worker-1",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "running",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-2",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "running",
+                    "badge": "core"
+                  }
+                ],
+                "columns": 1
+              },
+              {
+                "id": "queue",
+                "x": 545,
+                "y": 200,
+                "w": 200,
+                "h": 96,
+                "label": "workQueue",
+                "sublabel": "容量 4",
+                "tone": "orange",
+                "slots": {
+                  "total": 4,
+                  "filled": 2,
+                  "tone": "orange",
+                  "headLabel": "head 出队",
+                  "tailLabel": "tail 入队"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "from": "submit",
+                "to": "d1",
+                "tone": "blue"
+              },
+              {
+                "from": "d1",
+                "to": "addCore",
+                "label": "是",
+                "tone": "green",
+                "status": "dimmed"
+              },
+              {
+                "from": "addCore",
+                "to": "workers",
+                "via": [
+                  [
+                    758,
+                    78
+                  ]
+                ],
+                "tone": "green",
+                "status": "dimmed"
+              },
+              {
+                "from": "d1",
+                "to": "d2",
+                "label": "否 · core 满",
+                "tone": "orange",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "d2",
+                "to": "queue",
+                "label": "是 · 入队",
+                "tone": "orange",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "queue",
+                "to": "workers",
+                "label": "getTask()",
+                "tone": "teal",
+                "dashed": true
+              }
+            ],
+            "callouts": [
+              {
+                "x": 60,
+                "y": 330,
+                "text": "入队成功后 double-check：池已关闭则移除并拒绝",
+                "tone": "violet"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 4,
+          "shortLabel": "非核心扩容",
+          "badge": "INSIGHT",
+          "title": "第三级：队满 → wc < maximumPoolSize",
+          "paragraphs": [
+            "队列也满了（4/4），`offer` 返回 false，才走到 `addWorker(command, false)` —— 创建**非核心线程**直接执行这个任务，上限是 `maximumPoolSize`。",
+            "请把这个顺序刻进脑子：**先核心 → 再入队 → 队满才扩容**。很多人以为是「核心满就扩容到 max，再入队」，恰恰相反。这意味着用无界队列时 `maximumPoolSize` 形同虚设 —— 队列永远不满，永远轮不到扩容。",
+            "非核心线程是「救急部队」：任务高峰过去后，它们会在 `keepAliveTime` 空闲超时后被回收（见第 6 步），池子缩回 core 规模。"
+          ],
+          "callout": {
+            "kind": "idea",
+            "text": "想让线程池「先扩容再排队」？用 `SynchronousQueue`（容量 0，offer 几乎必败）或自定义队列先 offer 失败再入队 —— 这正是 CachedThreadPool 与 Tomcat 线程池的思路。"
+          },
+          "diffs": [
+            {
+              "kind": "change",
+              "text": "队列已满 4/4，`offer` 失败"
+            },
+            {
+              "kind": "add",
+              "text": "Worker-3（非核心）创建，`workerCount: 2 → 3`"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "execute() 第三段",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "// 第二级 offer 失败后：\nelse if (!addWorker(command, false))\n    reject(command);\n\n// addWorker(command, false) 的上限判断：\n// wc >= (core ? corePoolSize : maximumPoolSize)\n// core=false → 用 maximumPoolSize 兜底",
+            "caption": "`false` 表示按非核心口径检查上限，即 `maximumPoolSize`。"
+          },
+          "kpis": [
+            {
+              "label": "workerCount",
+              "value": "3 / 4",
+              "status": "warn"
+            },
+            {
+              "label": "队列占用",
+              "value": "4 / 4",
+              "status": "bad"
+            },
+            {
+              "label": "池状态",
+              "value": "RUNNING",
+              "status": "good"
+            },
+            {
+              "label": "拒绝次数",
+              "value": "0",
+              "status": "neutral"
+            }
+          ],
+          "legend": [
+            {
+              "color": "green",
+              "label": "核心线程"
+            },
+            {
+              "color": "teal",
+              "label": "非核心线程"
+            },
+            {
+              "color": "orange",
+              "label": "阻塞队列"
+            },
+            {
+              "color": "rose",
+              "label": "拒绝"
+            },
+            {
+              "color": "teal",
+              "label": "getTask 取任务",
+              "dashed": true
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "第三级：非核心扩容",
+            "nodes": [
+              {
+                "id": "submit",
+                "x": 120,
+                "y": 78,
+                "w": 180,
+                "h": 58,
+                "label": "execute(command)",
+                "sublabel": "任务提交入口 · null 检查",
+                "tone": "blue",
+                "icon": "zap"
+              },
+              {
+                "id": "d1",
+                "x": 365,
+                "y": 78,
+                "w": 200,
+                "h": 84,
+                "label": "wc < corePoolSize ?",
+                "sublabel": "第一级：核心线程",
+                "tone": "blue",
+                "shape": "diamond",
+                "dimmed": true
+              },
+              {
+                "id": "addCore",
+                "x": 640,
+                "y": 78,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, true)",
+                "sublabel": "新建核心线程直接执行",
+                "tone": "green",
+                "icon": "users",
+                "dimmed": true
+              },
+              {
+                "id": "d2",
+                "x": 365,
+                "y": 240,
+                "w": 200,
+                "h": 84,
+                "label": "workQueue.offer() ?",
+                "sublabel": "第二级：入队缓冲",
+                "tone": "orange",
+                "shape": "diamond"
+              },
+              {
+                "id": "d3",
+                "x": 365,
+                "y": 402,
+                "w": 200,
+                "h": 84,
+                "label": "wc < maximumPoolSize ?",
+                "sublabel": "第三级：非核心扩容",
+                "tone": "violet",
+                "shape": "diamond",
+                "active": true
+              },
+              {
+                "id": "addNonCore",
+                "x": 640,
+                "y": 402,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, false)",
+                "sublabel": "创建非核心线程救急",
+                "tone": "teal",
+                "icon": "users",
+                "active": true
+              }
+            ],
+            "zones": [
+              {
+                "id": "workers",
+                "x": 770,
+                "y": 36,
+                "w": 214,
+                "h": 252,
+                "label": "Worker 集合",
+                "sublabel": "wc = 3",
+                "tone": "green",
+                "items": [
+                  {
+                    "label": "Worker-1",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "running",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-2",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "running",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-3",
+                    "sublabel": "非核心线程",
+                    "tone": "teal",
+                    "state": "running",
+                    "badge": "non-core"
+                  }
+                ],
+                "columns": 1
+              },
+              {
+                "id": "queue",
+                "x": 545,
+                "y": 200,
+                "w": 200,
+                "h": 96,
+                "label": "workQueue",
+                "sublabel": "已满 4/4",
+                "tone": "orange",
+                "slots": {
+                  "total": 4,
+                  "filled": 4,
+                  "tone": "orange",
+                  "headLabel": "head 出队",
+                  "tailLabel": "tail 入队"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "from": "submit",
+                "to": "d1",
+                "tone": "blue",
+                "status": "dimmed"
+              },
+              {
+                "from": "d1",
+                "to": "addCore",
+                "tone": "green",
+                "status": "dimmed"
+              },
+              {
+                "from": "addCore",
+                "to": "workers",
+                "via": [
+                  [
+                    758,
+                    78
+                  ]
+                ],
+                "tone": "green",
+                "status": "dimmed"
+              },
+              {
+                "from": "d1",
+                "to": "d2",
+                "label": "否",
+                "tone": "orange"
+              },
+              {
+                "from": "d2",
+                "to": "queue",
+                "label": "是",
+                "tone": "orange",
+                "status": "dimmed"
+              },
+              {
+                "from": "queue",
+                "to": "workers",
+                "label": "getTask()",
+                "tone": "teal",
+                "dashed": true
+              },
+              {
+                "from": "d2",
+                "to": "d3",
+                "label": "否 · 队满",
+                "tone": "violet",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "d3",
+                "to": "addNonCore",
+                "label": "是 · 扩容",
+                "tone": "teal",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "addNonCore",
+                "to": "workers",
+                "via": [
+                  [
+                    760,
+                    402
+                  ],
+                  [
+                    760,
+                    300
+                  ]
+                ],
+                "tone": "teal",
+                "packets": 1
+              }
+            ],
+            "callouts": [
+              {
+                "x": 60,
+                "y": 490,
+                "text": "注意顺序：先入队，队满才扩容 —— 不是先扩容！",
+                "tone": "orange"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 5,
+          "shortLabel": "拒绝兜底",
+          "badge": "PROBLEM",
+          "title": "第四级：max 也满 → 拒绝策略",
+          "paragraphs": [
+            "线程数到达 `maximumPoolSize`（本例 max = 4）且队列已满，`addWorker(command, false)` 返回 false，最终调用 `reject(command)` → `handler.rejectedExecution(command, this)`。",
+            "JDK 内置四种策略：**AbortPolicy**（默认，抛 `RejectedExecutionException`）、**CallerRunsPolicy**（调用者线程自己跑，天然反压）、**DiscardPolicy**（静默丢弃）、**DiscardOldestPolicy**（丢队头再重试）。",
+            "拒绝不是异常状况，而是线程池的**正常保护机制**。生产环境要么用 CallerRuns 反压上游，要么自定义策略做落库 / 告警 / 降级，最忌讳 DiscardPolicy 无声无息地丢任务。"
+          ],
+          "callout": {
+            "kind": "warn",
+            "text": "还有一种隐蔽拒绝：池已 SHUTDOWN 后提交任务，同样走 `reject()`。关闭期间的提交必须有兜底。"
+          },
+          "diffs": [
+            {
+              "kind": "change",
+              "text": "Worker-4 补满 max，`workerCount = 4/4`"
+            },
+            {
+              "kind": "add",
+              "text": "T9 被拒绝：AbortPolicy 抛出异常，拒绝次数 +1"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "reject() 与 AbortPolicy",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "final void reject(Runnable command) {\n    handler.rejectedExecution(command, this);\n}\n\npublic static class AbortPolicy implements RejectedExecutionHandler {\n    public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {\n        throw new RejectedExecutionException(\n            \"Task \" + r.toString() +\n            \" rejected from \" + e.toString());\n    }\n}",
+            "caption": "默认策略直接抛异常 —— 调用方必须捕获或向上抛出。"
+          },
+          "kpis": [
+            {
+              "label": "workerCount",
+              "value": "4 / 4",
+              "status": "bad"
+            },
+            {
+              "label": "队列占用",
+              "value": "4 / 4",
+              "status": "bad"
+            },
+            {
+              "label": "池状态",
+              "value": "RUNNING",
+              "status": "good"
+            },
+            {
+              "label": "拒绝次数",
+              "value": "1",
+              "status": "bad"
+            }
+          ],
+          "legend": [
+            {
+              "color": "green",
+              "label": "核心线程"
+            },
+            {
+              "color": "teal",
+              "label": "非核心线程"
+            },
+            {
+              "color": "orange",
+              "label": "阻塞队列"
+            },
+            {
+              "color": "rose",
+              "label": "拒绝"
+            },
+            {
+              "color": "teal",
+              "label": "getTask 取任务",
+              "dashed": true
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "第四级：拒绝兜底",
+            "nodes": [
+              {
+                "id": "submit",
+                "x": 120,
+                "y": 78,
+                "w": 180,
+                "h": 58,
+                "label": "execute(command)",
+                "sublabel": "任务提交入口 · null 检查",
+                "tone": "blue",
+                "icon": "zap",
+                "dimmed": true
+              },
+              {
+                "id": "d1",
+                "x": 365,
+                "y": 78,
+                "w": 200,
+                "h": 84,
+                "label": "wc < corePoolSize ?",
+                "sublabel": "第一级：核心线程",
+                "tone": "blue",
+                "shape": "diamond",
+                "dimmed": true
+              },
+              {
+                "id": "addCore",
+                "x": 640,
+                "y": 78,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, true)",
+                "sublabel": "新建核心线程直接执行",
+                "tone": "green",
+                "icon": "users",
+                "dimmed": true
+              },
+              {
+                "id": "d2",
+                "x": 365,
+                "y": 240,
+                "w": 200,
+                "h": 84,
+                "label": "workQueue.offer() ?",
+                "sublabel": "第二级：入队缓冲",
+                "tone": "orange",
+                "shape": "diamond",
+                "dimmed": true
+              },
+              {
+                "id": "d3",
+                "x": 365,
+                "y": 402,
+                "w": 200,
+                "h": 84,
+                "label": "wc < maximumPoolSize ?",
+                "sublabel": "第三级：非核心扩容",
+                "tone": "violet",
+                "shape": "diamond",
+                "active": true
+              },
+              {
+                "id": "addNonCore",
+                "x": 640,
+                "y": 402,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, false)",
+                "sublabel": "创建非核心线程救急",
+                "tone": "teal",
+                "icon": "users",
+                "dimmed": true
+              },
+              {
+                "id": "reject",
+                "x": 640,
+                "y": 512,
+                "w": 210,
+                "h": 56,
+                "label": "rejectedExecution()",
+                "sublabel": "第四级：拒绝策略兜底",
+                "tone": "rose",
+                "icon": "ban",
+                "active": true,
+                "badge": "默认 Abort"
+              }
+            ],
+            "zones": [
+              {
+                "id": "workers",
+                "x": 770,
+                "y": 36,
+                "w": 214,
+                "h": 252,
+                "label": "Worker 集合",
+                "sublabel": "wc = max = 4",
+                "tone": "green",
+                "items": [
+                  {
+                    "label": "Worker-1",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "running",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-2",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "running",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-3",
+                    "sublabel": "非核心线程",
+                    "tone": "teal",
+                    "state": "running",
+                    "badge": "non-core"
+                  },
+                  {
+                    "label": "Worker-4",
+                    "sublabel": "非核心线程",
+                    "tone": "teal",
+                    "state": "running",
+                    "badge": "non-core"
+                  }
+                ],
+                "columns": 1
+              },
+              {
+                "id": "queue",
+                "x": 545,
+                "y": 200,
+                "w": 200,
+                "h": 96,
+                "label": "workQueue",
+                "sublabel": "已满 4/4",
+                "tone": "orange",
+                "slots": {
+                  "total": 4,
+                  "filled": 4,
+                  "tone": "orange",
+                  "headLabel": "head 出队",
+                  "tailLabel": "tail 入队"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "from": "submit",
+                "to": "d1",
+                "tone": "blue",
+                "status": "dimmed"
+              },
+              {
+                "from": "d1",
+                "to": "addCore",
+                "tone": "green",
+                "status": "dimmed"
+              },
+              {
+                "from": "addCore",
+                "to": "workers",
+                "via": [
+                  [
+                    758,
+                    78
+                  ]
+                ],
+                "tone": "green",
+                "status": "dimmed"
+              },
+              {
+                "from": "d1",
+                "to": "d2",
+                "tone": "orange",
+                "status": "dimmed"
+              },
+              {
+                "from": "d2",
+                "to": "queue",
+                "tone": "orange",
+                "status": "dimmed"
+              },
+              {
+                "from": "queue",
+                "to": "workers",
+                "label": "getTask()",
+                "tone": "teal",
+                "dashed": true
+              },
+              {
+                "from": "d2",
+                "to": "d3",
+                "label": "否",
+                "tone": "violet"
+              },
+              {
+                "from": "d3",
+                "to": "addNonCore",
+                "tone": "teal",
+                "status": "dimmed"
+              },
+              {
+                "from": "addNonCore",
+                "to": "workers",
+                "via": [
+                  [
+                    760,
+                    402
+                  ],
+                  [
+                    760,
+                    300
+                  ]
+                ],
+                "tone": "teal",
+                "status": "dimmed"
+              },
+              {
+                "from": "d3",
+                "to": "reject",
+                "label": "否 · 已达 max",
+                "tone": "rose",
+                "packets": 2,
+                "status": "error"
+              }
+            ],
+            "callouts": [
+              {
+                "x": 60,
+                "y": 490,
+                "text": "AbortPolicy 抛异常 / CallerRuns 反压 / Discard 丢弃",
+                "tone": "rose"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 6,
+          "shortLabel": "循环与回收",
+          "badge": "TECHNIQUE",
+          "title": "getTask()：线程复用与 keepAliveTime 回收",
+          "paragraphs": [
+            "每个 Worker 的主循环是 `runWorker()` → 反复 `getTask()`。取任务的方式由线程身份决定：`timed = allowCoreThreadTimeOut || wc > corePoolSize`。",
+            "**核心线程**用 `workQueue.take()` 无限阻塞 —— 没任务就睡着，绝不退出；**非核心线程**用 `workQueue.poll(keepAliveTime, NANOSECONDS)`，超时拿到 null 就退出循环，走 `processWorkerExit()` 把自己从集合移除，`workerCount--`。",
+            "所以 `keepAliveTime` 的本质是「非核心线程的空闲存活时间」。设置 `allowCoreThreadTimeOut(true)` 后核心线程也走 poll，整个池可以缩到 0 —— 低频任务池省资源的常用开关。"
+          ],
+          "callout": {
+            "kind": "tip",
+            "text": "高峰过后观察 `getPoolSize()` 回落曲线，就能直观看到 keepAliveTime 的回收效果。实验台里可以实时验证。"
+          },
+          "diffs": [
+            {
+              "kind": "change",
+              "text": "任务执行完毕，队列清空 0/4"
+            },
+            {
+              "kind": "remove",
+              "text": "Worker-3 poll 超时 → 回收，`workerCount: 3 → 2`"
+            },
+            {
+              "kind": "change",
+              "text": "核心 Worker-1/2 转入 take() 阻塞等待"
+            }
+          ],
+          "sourceDrawer": {
+            "title": "getTask() 的 take / poll 分叉",
+            "filePath": "java/util/concurrent/ThreadPoolExecutor.java",
+            "githubUrl": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java",
+            "language": "java",
+            "code": "private Runnable getTask() {\n    boolean timedOut = false;\n    for (;;) {\n        int c = ctl.get();\n        int wc = workerCountOf(c);\n        boolean timed = allowCoreThreadTimeOut || wc > corePoolSize;\n        if ((wc > maximumPoolSize || (timed && timedOut))\n            && (wc > 1 || workQueue.isEmpty())) {\n            if (compareAndDecrementWorkerCount(c))\n                return null;   // 退出 → processWorkerExit\n            continue;\n        }\n        try {\n            Runnable r = timed ?\n                workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) :\n                workQueue.take();\n            if (r != null) return r;\n            timedOut = true;\n        } catch (InterruptedException retry) {\n            timedOut = false;\n        }\n    }\n}",
+            "caption": "`timed` 决定 take 还是 poll；poll 超时置 `timedOut`，下一轮 CAS 减员退出。"
+          },
+          "kpis": [
+            {
+              "label": "workerCount",
+              "value": "2 / 4",
+              "status": "good"
+            },
+            {
+              "label": "队列占用",
+              "value": "0 / 4",
+              "status": "good"
+            },
+            {
+              "label": "池状态",
+              "value": "RUNNING",
+              "status": "good"
+            },
+            {
+              "label": "拒绝次数",
+              "value": "1",
+              "status": "neutral"
+            }
+          ],
+          "legend": [
+            {
+              "color": "green",
+              "label": "核心线程"
+            },
+            {
+              "color": "teal",
+              "label": "非核心线程"
+            },
+            {
+              "color": "orange",
+              "label": "阻塞队列"
+            },
+            {
+              "color": "rose",
+              "label": "拒绝"
+            },
+            {
+              "color": "teal",
+              "label": "getTask 取任务",
+              "dashed": true
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "Worker 循环与线程回收",
+            "nodes": [
+              {
+                "id": "submit",
+                "x": 120,
+                "y": 78,
+                "w": 180,
+                "h": 58,
+                "label": "execute(command)",
+                "sublabel": "任务提交入口",
+                "tone": "blue",
+                "icon": "zap",
+                "dimmed": true
+              },
+              {
+                "id": "d1",
+                "x": 365,
+                "y": 78,
+                "w": 200,
+                "h": 84,
+                "label": "wc < corePoolSize ?",
+                "sublabel": "第一级",
+                "tone": "blue",
+                "shape": "diamond",
+                "dimmed": true
+              },
+              {
+                "id": "addCore",
+                "x": 640,
+                "y": 78,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, true)",
+                "sublabel": "新建核心线程",
+                "tone": "green",
+                "icon": "users",
+                "dimmed": true
+              },
+              {
+                "id": "d2",
+                "x": 365,
+                "y": 240,
+                "w": 200,
+                "h": 84,
+                "label": "workQueue.offer() ?",
+                "sublabel": "第二级",
+                "tone": "orange",
+                "shape": "diamond",
+                "dimmed": true
+              },
+              {
+                "id": "d3",
+                "x": 365,
+                "y": 402,
+                "w": 200,
+                "h": 84,
+                "label": "wc < maximumPoolSize ?",
+                "sublabel": "第三级",
+                "tone": "violet",
+                "shape": "diamond",
+                "dimmed": true
+              },
+              {
+                "id": "addNonCore",
+                "x": 640,
+                "y": 402,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, false)",
+                "sublabel": "非核心扩容",
+                "tone": "teal",
+                "icon": "users",
+                "dimmed": true
+              },
+              {
+                "id": "reject",
+                "x": 640,
+                "y": 512,
+                "w": 210,
+                "h": 56,
+                "label": "rejectedExecution()",
+                "sublabel": "第四级",
+                "tone": "rose",
+                "icon": "ban",
+                "dimmed": true
+              },
+              {
+                "id": "retire",
+                "x": 877,
+                "y": 430,
+                "w": 210,
+                "h": 58,
+                "label": "processWorkerExit()",
+                "sublabel": "超时回收 · workerCount--",
+                "tone": "neutral",
+                "icon": "recycle",
+                "active": true
+              }
+            ],
+            "zones": [
+              {
+                "id": "workers",
+                "x": 770,
+                "y": 36,
+                "w": 214,
+                "h": 252,
+                "label": "Worker 集合",
+                "sublabel": "空闲后回收",
+                "tone": "green",
+                "items": [
+                  {
+                    "label": "Worker-1",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "idle",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-2",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "idle",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-3",
+                    "sublabel": "非核心线程",
+                    "tone": "teal",
+                    "state": "poll",
+                    "badge": "non-core"
+                  }
+                ],
+                "columns": 1
+              },
+              {
+                "id": "queue",
+                "x": 545,
+                "y": 200,
+                "w": 200,
+                "h": 96,
+                "label": "workQueue",
+                "sublabel": "已清空 0/4",
+                "tone": "orange",
+                "slots": {
+                  "total": 4,
+                  "filled": 0,
+                  "tone": "orange",
+                  "headLabel": "head 出队",
+                  "tailLabel": "tail 入队"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "from": "submit",
+                "to": "d1",
+                "tone": "blue",
+                "status": "dimmed"
+              },
+              {
+                "from": "d1",
+                "to": "addCore",
+                "tone": "green",
+                "status": "dimmed"
+              },
+              {
+                "from": "addCore",
+                "to": "workers",
+                "via": [
+                  [
+                    758,
+                    78
+                  ]
+                ],
+                "tone": "green",
+                "status": "dimmed"
+              },
+              {
+                "from": "d1",
+                "to": "d2",
+                "tone": "orange",
+                "status": "dimmed"
+              },
+              {
+                "from": "d2",
+                "to": "queue",
+                "tone": "orange",
+                "status": "dimmed"
+              },
+              {
+                "from": "d2",
+                "to": "d3",
+                "tone": "violet",
+                "status": "dimmed"
+              },
+              {
+                "from": "d3",
+                "to": "addNonCore",
+                "tone": "teal",
+                "status": "dimmed"
+              },
+              {
+                "from": "addNonCore",
+                "to": "workers",
+                "via": [
+                  [
+                    760,
+                    402
+                  ],
+                  [
+                    760,
+                    300
+                  ]
+                ],
+                "tone": "teal",
+                "status": "dimmed"
+              },
+              {
+                "from": "d3",
+                "to": "reject",
+                "tone": "rose",
+                "status": "dimmed"
+              },
+              {
+                "from": "queue",
+                "to": "workers",
+                "label": "getTask() 循环",
+                "tone": "teal",
+                "dashed": true,
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "workers",
+                "to": "retire",
+                "label": "poll 超时",
+                "tone": "orange",
+                "dashed": true,
+                "packets": 1
+              }
+            ],
+            "callouts": [
+              {
+                "x": 545,
+                "y": 330,
+                "text": "核心线程: take() 无限阻塞等待",
+                "tone": "teal"
+              },
+              {
+                "x": 545,
+                "y": 366,
+                "text": "非核心: poll(keepAliveTime) 超时返回 null",
+                "tone": "orange"
+              },
+              {
+                "x": 545,
+                "y": 402,
+                "text": "allowCoreThreadTimeOut(true) 让核心也超时",
+                "tone": "violet"
+              }
+            ]
+          }
+        },
+        {
+          "stepNumber": 7,
+          "shortLabel": "全景复盘",
+          "badge": "RECAP",
+          "title": "四级决策链：一张图记住 execute()",
+          "paragraphs": [
+            "把整条链收拢成一句口诀：**先核心 → 再入队 → 再扩容 → 最后拒绝**。四级决策全部围绕 `ctl` 的无锁读写展开，队列是缓冲，max 是保险丝，拒绝策略是最后的兜底。",
+            "理解了这条链，七大参数就不再是孤立的配置项：`corePoolSize` 决定常态产能，队列容量决定缓冲深度，`maximumPoolSize` 决定峰值产能，`keepAliveTime` 决定峰值退潮速度，`handler` 决定溢出行为。",
+            "下一课进入生产视角：Executors 工厂为什么被规约禁用、submit 为什么吞异常、如何优雅关闭、参数怎么估 —— 全部是这条决策链的推论。"
+          ],
+          "recapTable": [
+            {
+              "question": "为什么先入队再扩容，而不是先扩容？",
+              "decision": "队列优先，扩容是队满后的救急",
+              "because": "建线程成本高（内核对象 + 栈内存），队列缓冲能削峰，避免线程数抖动。"
+            },
+            {
+              "question": "maximumPoolSize 什么时候才有意义？",
+              "decision": "只有有界队列（或 SynchronousQueue）才触发扩容",
+              "because": "无界队列永远 offer 成功，第三级决策永远走不到。"
+            },
+            {
+              "question": "核心线程会死吗？",
+              "decision": "默认不会；allowCoreThreadTimeOut(true) 后会",
+              "because": "take() 无限阻塞保活；poll 超时才退出，keepAliveTime 只作用于 timed 线程。"
+            },
+            {
+              "question": "拒绝是错误吗？",
+              "decision": "不是，是过载保护的正常出口",
+              "because": "默认 Abort 抛异常提醒调用方；生产常用 CallerRuns 反压或自定义降级。"
+            }
+          ],
+          "kpis": [
+            {
+              "label": "workerCount",
+              "value": "2 / 4",
+              "status": "good"
+            },
+            {
+              "label": "队列占用",
+              "value": "1 / 4",
+              "status": "neutral"
+            },
+            {
+              "label": "池状态",
+              "value": "RUNNING",
+              "status": "good"
+            },
+            {
+              "label": "拒绝次数",
+              "value": "1",
+              "status": "neutral"
+            }
+          ],
+          "legend": [
+            {
+              "color": "green",
+              "label": "核心线程"
+            },
+            {
+              "color": "teal",
+              "label": "非核心线程"
+            },
+            {
+              "color": "orange",
+              "label": "阻塞队列"
+            },
+            {
+              "color": "rose",
+              "label": "拒绝"
+            },
+            {
+              "color": "teal",
+              "label": "getTask 取任务",
+              "dashed": true
+            }
+          ],
+          "scene": {
+            "kind": "flow",
+            "title": "四级决策链全景",
+            "nodes": [
+              {
+                "id": "submit",
+                "x": 120,
+                "y": 78,
+                "w": 180,
+                "h": 58,
+                "label": "execute(command)",
+                "sublabel": "任务提交入口 · null 检查",
+                "tone": "blue",
+                "icon": "zap"
+              },
+              {
+                "id": "d1",
+                "x": 365,
+                "y": 78,
+                "w": 200,
+                "h": 84,
+                "label": "wc < corePoolSize ?",
+                "sublabel": "① 核心线程",
+                "tone": "blue",
+                "shape": "diamond"
+              },
+              {
+                "id": "addCore",
+                "x": 640,
+                "y": 78,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, true)",
+                "sublabel": "新建核心线程直接执行",
+                "tone": "green",
+                "icon": "users"
+              },
+              {
+                "id": "d2",
+                "x": 365,
+                "y": 240,
+                "w": 200,
+                "h": 84,
+                "label": "workQueue.offer() ?",
+                "sublabel": "② 入队缓冲",
+                "tone": "orange",
+                "shape": "diamond"
+              },
+              {
+                "id": "d3",
+                "x": 365,
+                "y": 402,
+                "w": 200,
+                "h": 84,
+                "label": "wc < maximumPoolSize ?",
+                "sublabel": "③ 非核心扩容",
+                "tone": "violet",
+                "shape": "diamond"
+              },
+              {
+                "id": "addNonCore",
+                "x": 640,
+                "y": 402,
+                "w": 210,
+                "h": 60,
+                "label": "addWorker(cmd, false)",
+                "sublabel": "创建非核心线程救急",
+                "tone": "teal",
+                "icon": "users"
+              },
+              {
+                "id": "reject",
+                "x": 640,
+                "y": 512,
+                "w": 210,
+                "h": 56,
+                "label": "rejectedExecution()",
+                "sublabel": "④ 拒绝策略兜底",
+                "tone": "rose",
+                "icon": "ban"
+              }
+            ],
+            "zones": [
+              {
+                "id": "workers",
+                "x": 770,
+                "y": 36,
+                "w": 214,
+                "h": 252,
+                "label": "Worker 集合",
+                "sublabel": "core ≤ wc ≤ max",
+                "tone": "green",
+                "items": [
+                  {
+                    "label": "Worker-1",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "running",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-2",
+                    "sublabel": "核心线程",
+                    "tone": "green",
+                    "state": "idle",
+                    "badge": "core"
+                  },
+                  {
+                    "label": "Worker-3",
+                    "sublabel": "非核心线程",
+                    "tone": "teal",
+                    "state": "poll",
+                    "badge": "non-core"
+                  }
+                ],
+                "columns": 1
+              },
+              {
+                "id": "queue",
+                "x": 545,
+                "y": 200,
+                "w": 200,
+                "h": 96,
+                "label": "workQueue",
+                "sublabel": "容量 4",
+                "tone": "orange",
+                "slots": {
+                  "total": 4,
+                  "filled": 1,
+                  "tone": "orange",
+                  "headLabel": "head 出队",
+                  "tailLabel": "tail 入队"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "from": "submit",
+                "to": "d1",
+                "tone": "blue",
+                "packets": 2,
+                "status": "active"
+              },
+              {
+                "from": "d1",
+                "to": "addCore",
+                "label": "是",
+                "tone": "green",
+                "packets": 1
+              },
+              {
+                "from": "addCore",
+                "to": "workers",
+                "via": [
+                  [
+                    758,
+                    78
+                  ]
+                ],
+                "tone": "green"
+              },
+              {
+                "from": "d1",
+                "to": "d2",
+                "label": "否",
+                "tone": "orange",
+                "packets": 1
+              },
+              {
+                "from": "d2",
+                "to": "queue",
+                "label": "是",
+                "tone": "orange",
+                "packets": 1
+              },
+              {
+                "from": "queue",
+                "to": "workers",
+                "label": "getTask()",
+                "tone": "teal",
+                "dashed": true,
+                "packets": 1
+              },
+              {
+                "from": "d2",
+                "to": "d3",
+                "label": "否",
+                "tone": "violet",
+                "packets": 1
+              },
+              {
+                "from": "d3",
+                "to": "addNonCore",
+                "label": "是",
+                "tone": "teal",
+                "packets": 1
+              },
+              {
+                "from": "addNonCore",
+                "to": "workers",
+                "via": [
+                  [
+                    760,
+                    402
+                  ],
+                  [
+                    760,
+                    300
+                  ]
+                ],
+                "tone": "teal"
+              },
+              {
+                "from": "d3",
+                "to": "reject",
+                "label": "否",
+                "tone": "rose",
+                "packets": 1,
+                "status": "error"
+              }
+            ],
+            "callouts": [
+              {
+                "x": 40,
+                "y": 520,
+                "text": "口诀：先核心 → 再入队 → 再扩容 → 最后拒绝",
+                "tone": "blue"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

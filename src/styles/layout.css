@@ -1,0 +1,921 @@
+/* ============================================================================
+   App Shell, Top Bar, 3-Column Workspace Grid, Sidebar & Mobile Drawer
+   ============================================================================ */
+
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* ----------------------------------------------------------------------------
+   Top Bar
+   ---------------------------------------------------------------------------- */
+
+.topbar {
+  height: var(--topbar-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 14px;
+  background: var(--paper-2);
+  border-bottom: 1.5px solid var(--line-strong);
+  z-index: 30;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-menu-btn {
+  display: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 2px 4px 2px 0;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--blue);
+  border: 1.5px solid var(--edge);
+  box-shadow: var(--pop-shadow-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1;
+  transition: transform 0.14s var(--ease-snappy);
+}
+
+.brand-link:hover .brand-mark {
+  transform: translate(-1px, -1px) rotate(-3deg);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.brand-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.brand-sub {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line-strong);
+  flex-shrink: 0;
+}
+
+/* Mode Tabs (Learn / Lab / Cheatsheet) */
+.mode-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+}
+
+.mode-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.mode-tab:hover:not(.mode-tab--active) {
+  color: var(--ink);
+  background: var(--hover-bg);
+}
+
+.mode-tab--active {
+  background: var(--blue);
+  color: var(--ink);
+  border-color: var(--edge);
+  box-shadow: var(--pop-shadow-sm);
+  font-weight: 700;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Search Trigger Button */
+.search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  min-width: 200px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--sheet);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.search-trigger:hover {
+  border-color: var(--edge);
+  background: var(--stage-bg);
+  color: var(--ink-2);
+  box-shadow: var(--pop-shadow-sm);
+}
+
+.search-trigger-label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-trigger-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Theme Toggle Button */
+.theme-toggle-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* Topbar Pills */
+.topbar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  background: var(--sheet);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease,
+    transform 0.12s var(--ease-snappy),
+    box-shadow 0.12s var(--ease-snappy);
+}
+
+.topbar-pill--link:hover {
+  border-color: var(--edge);
+  background: var(--paper);
+  box-shadow: var(--pop-shadow-sm);
+  transform: translate(-0.5px, -0.5px);
+}
+
+.topbar-pill--author {
+  background: var(--violet);
+  border-color: var(--edge);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* ----------------------------------------------------------------------------
+   3-Column Desktop Workspace Grid
+   ---------------------------------------------------------------------------- */
+
+.workspace-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--inspector-w);
+  overflow: hidden;
+}
+
+.workspace-grid--sidebar-collapsed {
+  grid-template-columns: 60px minmax(0, 1fr) var(--inspector-w);
+}
+
+.stage-slot {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+  position: relative;
+}
+
+.stage-slot > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.cheatsheet-scroll-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--paper);
+}
+
+.lab-scroll-container {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+/* ----------------------------------------------------------------------------
+   Left Sidebar (Course TOC + Collapsible Progress Card)
+   ---------------------------------------------------------------------------- */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper-2);
+  border-right: 1.5px solid var(--line);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.sidebar--collapsed .sidebar-header {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.sidebar--collapsed .sidebar-eyebrow,
+.sidebar--collapsed .sidebar-count-pill,
+.sidebar--collapsed .sidebar-nav,
+.sidebar--collapsed .progress-card {
+  display: none;
+}
+
+.sidebar-eyebrow {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sidebar-count-pill {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  background: var(--sheet);
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sidebar-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chapter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.chapter-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.chapter-toggle:hover {
+  background: var(--hover-bg);
+}
+
+.chapter-chevron {
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: transform 0.16s var(--ease-snappy);
+}
+
+.chapter-chevron--open {
+  transform: rotate(90deg);
+}
+
+.chapter-folder-icon {
+  flex-shrink: 0;
+}
+
+.chapter-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.chapter-num {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.chapter-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-ratio {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.chapter-ratio--done {
+  background: var(--mint);
+  border-color: var(--green-stroke);
+  color: var(--ink);
+}
+
+.chapter-lessons {
+  margin: 2px 0 3px 14px;
+  padding-left: 8px;
+  border-left: 1px dashed var(--line-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lesson-item {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.12s var(--ease-snappy);
+}
+
+.lesson-item:hover:not(.lesson-item--active) {
+  background: var(--sheet);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.lesson-item--active {
+  background: var(--blue);
+  border-color: var(--edge);
+  box-shadow: var(--pop-shadow);
+  color: var(--ink);
+  font-weight: 700;
+  transform: translate(-1px, -1px);
+}
+
+.lesson-status-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+}
+
+.lesson-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.lesson-item--active .lesson-dot {
+  background: var(--ink);
+  width: 7px;
+  height: 7px;
+}
+
+.lesson-done-icon {
+  color: var(--kpi-good);
+}
+
+.lesson-item--active .lesson-done-icon {
+  color: var(--ink);
+}
+
+.lesson-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lesson-item-title {
+  font-size: 12px;
+  line-height: 1.38;
+  word-break: break-word;
+}
+
+.lesson-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.lesson-item--active .lesson-item-meta {
+  color: var(--ink-2);
+}
+
+/* Collapsible Progress Card */
+.progress-card {
+  flex-shrink: 0;
+  margin: 6px 9px 8px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--edge);
+  background: var(--card);
+  box-shadow: var(--pop-shadow-sm);
+  overflow: hidden;
+}
+
+.progress-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.progress-card-header:hover {
+  background: var(--hover-bg);
+}
+
+.progress-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.progress-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.progress-bar-wrap {
+  padding: 0 11px 10px;
+}
+
+.progress-bar-track {
+  height: 9px;
+  width: 100%;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--edge);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--blue-stroke);
+  border-right: 1.5px solid var(--edge);
+  transition: width 0.3s var(--ease-snappy);
+}
+
+.progress-bar-fill--zero {
+  border-right: none;
+}
+
+.progress-details {
+  padding: 8px 11px 10px;
+  border-top: 1px dashed var(--line-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: var(--sheet);
+}
+
+.progress-chapter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.progress-chapter-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.progress-chapter-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+.progress-chapter-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-chapter-count {
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.progress-reset-btn {
+  margin-top: 4px;
+  align-self: flex-end;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.progress-reset-btn:hover {
+  border-color: var(--rose-stroke);
+  color: var(--rose-stroke);
+  background: var(--rose);
+}
+
+/* ----------------------------------------------------------------------------
+   Mobile Slide-Over Drawer
+   ---------------------------------------------------------------------------- */
+
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  z-index: 60;
+  display: flex;
+  animation: fadeIn 0.16s ease;
+}
+
+.mobile-drawer {
+  width: min(326px, 88vw);
+  height: 100dvh;
+  background: var(--paper-2);
+  border-right: 1.5px solid var(--edge);
+  box-shadow: var(--pop-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideInLeft 0.2s var(--ease-snappy);
+}
+
+.mobile-drawer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1.5px solid var(--line-strong);
+}
+
+.mobile-drawer-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobile-drawer-content .sidebar {
+  flex: 1;
+  border-right: none;
+}
+
+.mobile-drawer-links {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Responsive Breakpoints (<= 1080px)
+   ---------------------------------------------------------------------------- */
+
+@media (max-width: 1260px) {
+  .search-trigger {
+    min-width: 150px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    padding: 0 10px;
+    gap: 8px;
+  }
+
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+
+  .brand-sub,
+  .topbar-divider,
+  .topbar .topbar-pill--link,
+  .search-trigger-kbd {
+    display: none;
+  }
+
+  .search-trigger {
+    min-width: 0;
+    padding: 0 9px;
+  }
+
+  .search-trigger-label {
+    display: none;
+  }
+
+  .workspace-grid {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .workspace-grid > .sidebar {
+    display: none;
+  }
+
+  .stage-slot {
+    min-height: 460px;
+    overflow: visible;
+  }
+
+  .cheatsheet-scroll-container,
+  .lab-scroll-container {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 760px) {
+  .mode-tab-en {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .topbar-left {
+    gap: 6px;
+  }
+
+  .topbar-right {
+    gap: 5px;
+  }
+
+  .brand-title {
+    font-size: 12.5px;
+  }
+
+  .mode-tabs {
+    gap: 2px;
+    padding: 2px;
+  }
+
+  .mode-tab {
+    padding: 0 7px;
+    font-size: 11px;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar .brand-text {
+    display: none;
+  }
+}
+
+/* ---- Knowledge base loading / error screen ---- */
+
+.kb-status-screen {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.kb-status-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  padding: 28px 32px;
+  background: var(--sheet);
+  border: 1.5px solid var(--edge);
+  border-radius: 12px;
+  box-shadow: var(--pop-shadow-lg);
+  text-align: center;
+  color: var(--ink);
+}
+
+.kb-status-card--error {
+  border-color: var(--rose-stroke);
+}
+
+.kb-status-card--error > svg {
+  color: var(--rose-stroke);
+}
+
+.kb-status-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.kb-status-detail {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.kb-status-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.kb-spinner {
+  animation: kb-spin 1s linear infinite;
+  color: var(--blue-stroke);
+}
+
+@keyframes kb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-spinner {
+    animation: none;
+  }
+}
