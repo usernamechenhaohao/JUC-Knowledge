@@ -2,8 +2,8 @@
   "version": 1,
   "title": "JUC 知识库",
   "chapters": [
-    "chapters/ch01.json",
-    "chapters/ch02.json"
+    "chapters/线程池执行流程.json",
+    "chapters/注意事项与陷阱.json"
   ],
   "cheatsheet": "cheatsheet.json"
 }
